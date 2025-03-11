@@ -1,0 +1,111 @@
+Error code: -1
+Listing kernels: (Total: 1)
+Instruction 0: build/insts/aie.txt
+Listing xclbins: (Total: 1)
+Xclbin 0 at address: 0x653051f7fca0
++------------------------------------------------------------------------------+
+|    0 | 06030001 | NPU information                                            |
+|      |          | --NPU version: 1.0                                         |
+|      |          | --NPU rows: 6                                              |
+|    1 | 00000101 | --NPU cols: 1                                              |
+|      |          | --NPU memory tile rows: 1                                  |
+|    2 | 00000008 | Instruction commands: 8                                    |
+|    3 | 000000d0 | Instruction lines: 52                                      |
++------------------------------------------------------------------------------+
+|    4 | 00000001 | DMA block write, OP count: 0                               |
+|    5 | 0001d000 | --Location: (row: 0, col: 0)                               |
+|      |          | --BD ID: 0                                                 |
+|    6 | 0000002c | Operation size: 11                                         |
+|    7 | 00000400 | --Buffer length: 1K                                        |
+|    8 | 00000000 | --Buffer offset: 0                                         |
+|    9 | 40180000 | --Packet enabled                                           |
+|      |          | --Out of order id: 0                                       |
+|      |          | --Packet id: 3                                             |
+|      |          | --Packet type: 0                                           |
+|   10 | 01000000 | --D0 size, stride: 16, 1                                   |
+|   11 | 8400000f | --D1 size, stride: 64, 16                                  |
+|   12 | 00000000 | --D2 stride: 1                                             |
+|      |          | --Inferred D2 size: 1                                      |
+|   13 | 00000000 | --Iteration size: 1                                        |
+|      |          | --Iteration stride: 1                                      |
+|   14 | 02000000 | --Next BD ID: 0                                            |
+|      |          | --Valid BD: 1                                              |
+|      |          | --Lock relative value: 128                                 |
+|      |          | --Lock relative id: 0                                      |
+|      |          | --Lock acquire enable: 0                                   |
+|      |          | --Lock acquire value: 0                                    |
+|      |          | --Lock acquire id: 0                                       |
++------------------------------------------------------------------------------+
+|   15 | 00000081 | DDR patch, OP count: 1                                     |
+|   16 | 00000018 | Operation size: 6                                          |
+|   17 | 0001d004 | BD register address                                        |
+|      |          | --Location: (row: 0, col: 0)                               |
+|      |          | --BD ID: 0                                                 |
+|   18 | 00000000 | Argument index: 0                                          |
+|   19 | 00000000 | Argument offset (Bytes): 0                                 |
+|   20 | 00000000 | Constant 0                                                 |
++------------------------------------------------------------------------------+
+|   21 | 00000000 | Queue write, OP count: 2                                   |
+|   22 | 0001d214 | --MM2S                                                     |
+|      |          | --Channel: 0                                               |
+|   23 | 00000000 | --Repeat count: 0                                          |
+|      |          | --Issue token: 0                                           |
+|      |          | --BD ID: 0                                                 |
++------------------------------------------------------------------------------+
+|   24 | 00000001 | DMA block write, OP count: 3                               |
+|   25 | 0001d020 | --Location: (row: 0, col: 0)                               |
+|      |          | --BD ID: 1                                                 |
+|   26 | 0000002c | Operation size: 11                                         |
+|   27 | 00000400 | --Buffer length: 1K                                        |
+|   28 | 00000000 | --Buffer offset: 0                                         |
+|   29 | 00000000 | Packet disabled                                            |
+|   30 | 01000000 | --D0 size, stride: 16, 1                                   |
+|   31 | 8400000f | --D1 size, stride: 64, 16                                  |
+|   32 | 00000000 | --D2 stride: 1                                             |
+|      |          | --Inferred D2 size: 1                                      |
+|   33 | 00000000 | --Iteration size: 1                                        |
+|      |          | --Iteration stride: 1                                      |
+|   34 | 02000000 | --Next BD ID: 0                                            |
+|      |          | --Valid BD: 1                                              |
+|      |          | --Lock relative value: 128                                 |
+|      |          | --Lock relative id: 0                                      |
+|      |          | --Lock acquire enable: 0                                   |
+|      |          | --Lock acquire value: 0                                    |
+|      |          | --Lock acquire id: 0                                       |
++------------------------------------------------------------------------------+
+|   35 | 00000081 | DDR patch, OP count: 4                                     |
+|   36 | 00000018 | Operation size: 6                                          |
+|   37 | 0001d024 | BD register address                                        |
+|      |          | --Location: (row: 0, col: 0)                               |
+|      |          | --BD ID: 1                                                 |
+|   38 | 00000001 | Argument index: 1                                          |
+|   39 | 00000000 | Argument offset (Bytes): 0                                 |
+|   40 | 00000000 | Constant 0                                                 |
++------------------------------------------------------------------------------+
+|   41 | 00000003 | Issue token, OP count: 5                                   |
+|   42 | 0001d200 | --S2MM                                                     |
+|      |          | --Location: (row: 0, col: 0)                               |
+|      |          | --Channel: 0                                               |
+|   43 | 00000f00 | Controller packet ID: 15                                   |
+|   44 | 00000f00 | Mask (constant)                                            |
++------------------------------------------------------------------------------+
+|   45 | 00000000 | Queue write, OP count: 6                                   |
+|   46 | 0001d204 | --S2MM                                                     |
+|      |          | --Channel: 0                                               |
+|   47 | 80000001 | --Repeat count: 0                                          |
+|      |          | --Issue token: 1                                           |
+|      |          | --BD ID: 1                                                 |
++------------------------------------------------------------------------------+
+|   48 | 00000080 | Wait sync, OP count: 7                                     |
+|   49 | 00000010 | --Operation size: 16                                       |
+|   50 | 00000000 | --Location: (row: 0, col: 0)                               |
+|      |          | --S2MM                                                     |
+|   51 | 00010100 | --Channel: 0                                               |
++------------------------------------------------------------------------------+
+[info]  Running runtime test.
+[info]  Running kernel with bare call.
++--------------------------------------+
+| NPU time with bare call: 0.1225 us   |
++--------------------------------------+
+[info]  Finished running kernel
+[info]  PASSED 
