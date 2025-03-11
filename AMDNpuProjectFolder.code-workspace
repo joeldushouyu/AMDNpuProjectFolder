@@ -7,7 +7,7 @@
 	],
 	"settings": {
 		"python.analysis.extraPaths": [
-			"/home/shouyud/mlir-aie/install/python/***",
+			"/home/sdu/mlir-aie/install/python/***",
 			"/opt/xilinx/xrt/python/***"
 		],
 		"files.associations": {

@@ -7,13 +7,13 @@
 # Modified by Alfred
 
 
-TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/AMDNpuProjectFolder/Template)
+TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/sdu/AMDNpuProjectFolder/Template)
 TemplaeHostDir := $(TemplateRepoDir)/host
 
 # create a dynamic link of /common folder, 
 
 
-DEVICE ?= npu1
+DEVICE ?= npu2
 HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 

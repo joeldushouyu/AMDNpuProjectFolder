@@ -40,7 +40,7 @@ int main(int argc, const char *argv[]) {
 //
 //    }
 
-    instr_v = test_utils::load_instr_sequence("insts.txt");
+    instr_v = test_utils::load_instr_sequence("./build/insts/aie.txt");
     int IN_SIZE;
     int OUT_SIZE;
 
@@ -60,7 +60,7 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   // Load the xclbin
-  auto xclbin = xrt::xclbin("final.xclbin");
+  auto xclbin = xrt::xclbin("./build/xclbins/aie.xclbin");
 
   std::string Node = "MLIR_AIE";
 

@@ -4,7 +4,7 @@
 
 
 module{
-    aie.device(npu1_1col){
+    aie.device(npu2){
         func.func private @vector_scalar_mul_int16_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32)
 
         // setup the cities of it 

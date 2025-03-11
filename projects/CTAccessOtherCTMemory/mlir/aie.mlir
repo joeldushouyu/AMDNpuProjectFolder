@@ -3,7 +3,7 @@
 // CT 1,3 (column 2, row 2 of CT) sould be able to access its top, bottom and left neighbor CT
 // example this CT reads 256xi8 values from neighbor CT, sum them together and return the result back to host
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu2) {
 
 
 
@@ -131,8 +131,8 @@ module {
 
 
         aiex.runtime_sequence(%arg0: memref<8xi8>, %arg2: memref<8xi8>) {
-            aiex.npu.dma_memcpy_nd (0, 1, %arg0[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in1} : memref<8xi8>
-            aiex.npu.dma_memcpy_nd (0, 1, %arg2[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 2 : i64, metadata = @objFifo_out1, issue_token = true} : memref<8xi8>
+            aiex.npu.dma_memcpy_nd ( %arg0[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in1} : memref<8xi8>
+            aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 2 : i64, metadata = @objFifo_out1, issue_token = true} : memref<8xi8>
             // %0 = aiex.dma_configure_task_for @objFifo_in1{
             //     aie.dma_bd(%arg0: memref<8xi8>, 0, 8, [<size = 1, stride = 0>, <size =1, stride = 0>, <size = 1, stride = 0>, <size= 8, stride = 1>])
             //     aie.end

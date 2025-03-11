@@ -6,12 +6,12 @@
                 "${default}",
                 "/opt/xilinx/xrt/include/**",
                 "/opt/xilinx/xrt/lib/**",
-                "/home/shouyud/mlir-aie/llvm/libcxx/test/**",
+                "/home/sdu/mlir-aie/llvm/libcxx/test/**",
                 "/usr/include",
                 "/usr/include/boost",
                 "/usr/**",
-                "//home/shouyud/mlir-aie/build",
-                "/home/shouyud/mlir-aie/runtime_lib/**"
+                "//home/sdu/mlir-aie/build",
+                "/home/sdu/mlir-aie/runtime_lib/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
