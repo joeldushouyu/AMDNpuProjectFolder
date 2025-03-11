@@ -2,7 +2,7 @@ Error code: -1
 Listing kernels: (Total: 1)
 Instruction 0: build/insts/aie.txt
 Listing xclbins: (Total: 1)
-Xclbin 0 at address: 0x6267873b7d10
+Xclbin 0 at address: 0x588be2d27d10
 +------------------------------------------------------------------------------+
 |    0 | 06030001 | NPU information                                            |
 |      |          | --NPU version: 1.0                                         |
@@ -94,7 +94,7 @@ Xclbin 0 at address: 0x6267873b7d10
 [info]  Running runtime test.
 [info]  Running kernel with bare call.
 +--------------------------------------+
-| NPU time with bare call: 0.101 us    |
+| NPU time with bare call: 0.1105 us   |
 +--------------------------------------+
 [info]  Finished running kernel
 [info]  PASSED 
