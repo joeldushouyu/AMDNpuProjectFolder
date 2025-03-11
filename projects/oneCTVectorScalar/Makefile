@@ -8,13 +8,22 @@
 
 
 TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/AMDNpuProjectFolder/Template)
-
+TemplaeHostDir := $(TemplateRepoDir)/host
 
 # create a dynamic link of /common folder, 
 
 
 DEVICE ?= npu1
 HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+
+# modify child makefile variable
+# Append to HOST_O_DIR or modify it
+EXTRA_HEADERS = $(filter-out ${TemplaeHostDir}/typedef.hpp, $(wildcard ${TemplaeHostDir}/*.hpp))
+EXTRA_SRCS =  $(filter-out ${TemplaeHostDir}/host.cpp, $(wildcard ${TemplaeHostDir}/*.cpp))
+
+
+
 
 
 
@@ -26,9 +35,38 @@ include $(TemplateRepoDir)/makefiles/kernel.mk
 include $(TemplateRepoDir)/makefiles/bitstream.mk
 include $(TemplateRepoDir)/makefiles/mlir_bitstream.mk
 
-# Host makefile
-include $(TemplateRepoDir)/makefiles/host.mk
+# # Host makefile
+# include $(TemplateRepoDir)/makefiles/host.mk
+# # overide child 
+# HOST_SRCDIR := ${HOME_DIR}/host
+# HOST_HEADERS = $(wildcard ${HOST_SRCDIR}/*.hpp)
+# HOST_SRCS = $(wildcard ${HOST_SRCDIR}/*.cpp)
+# HOST_HEADERS := $(HOST_HEADERS) $(EXTRA_HEADERS)
+# HOST_SRCS := $(HOST_SRCS) $(EXTRA_SRCS)
 
+
+
+# Override child
+HOST_SRCDIR := ${HOME_DIR}/host
+
+# Print HOST_SRCDIR for debugging
+$(info HOST_SRCDIR = $(HOST_SRCDIR))
+
+HOST_HEADERS = $(wildcard ${HOST_SRCDIR}/*.hpp)
+HOST_SRCS = $(wildcard ${HOST_SRCDIR}/*.cpp)
+
+# Print HOST_HEADERS and HOST_SRCS before adding EXTRA_HEADERS and EXTRA_SRCS
+$(info HOST_HEADERS (before EXTRA) = $(HOST_HEADERS))
+$(info HOST_SRCS (before EXTRA) = $(HOST_SRCS))
+
+override HOST_HEADERS := $(HOST_HEADERS) $(EXTRA_HEADERS)
+override HOST_SRCS := $(HOST_SRCS) $(EXTRA_SRCS)
+
+# Print HOST_HEADERS and HOST_SRCS after adding EXTRA_HEADERS and EXTRA_SRCS
+$(info HOST_HEADERS (after EXTRA) = $(HOST_HEADERS))
+$(info HOST_SRCS (after EXTRA) = $(HOST_SRCS))
+CXXFLAGS += -I$(TemplaeHostDir)
+include $(TemplateRepoDir)/makefiles/host.mk
 
 # This is a copy of the instruction just for debugging purposes
 INSTR_REDUDENT_TARGETS := $(patsubst ${BITSTREAM_O_DIR}/from_iron/%.txt, ${HOME_DIR}/build/insts/%.txt.redundant, ${IRON_BOTH_INSTS_TARGET})
