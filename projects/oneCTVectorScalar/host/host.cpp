@@ -67,9 +67,9 @@ int main(int argc, const char *argv[]) {
     npu_instance.interperate_bd(0);
     // npu_instance.interperate_bd(1); // They are the same
     
-    vector<DATATYPE_IN1> w_0 = npu_instance.create_bo_vector<DATATYPE_IN1>(vectorSize, 3, app_id_0);
-    vector<DATATYPE_IN2> x_0 = npu_instance.create_bo_vector<DATATYPE_IN2>(scalarSize, 4, app_id_0);
-    vector<DATATYPE_OUT> y_0 = npu_instance.create_bo_vector<DATATYPE_OUT>(vectorSize, 5, app_id_0);
+    buffer<DATATYPE_IN1> w_0 = npu_instance.create_bo_buffer<DATATYPE_IN1>(vectorSize, 3, app_id_0);
+    buffer<DATATYPE_IN2> x_0 = npu_instance.create_bo_buffer<DATATYPE_IN2>(scalarSize, 4, app_id_0);
+    buffer<DATATYPE_OUT> y_0 = npu_instance.create_bo_buffer<DATATYPE_OUT>(vectorSize, 5, app_id_0);
 
 
 
@@ -79,7 +79,7 @@ int main(int argc, const char *argv[]) {
     x_0[0] = 2;
 
 
-    vector<DATATYPE_OUT> y_ref(vectorSize);    
+    buffer<DATATYPE_OUT> y_ref(vectorSize);    
     for(size_t i = 0; i < vectorSize; i++){
         y_ref[i] = w_0[i]* x_0[0];
     }
