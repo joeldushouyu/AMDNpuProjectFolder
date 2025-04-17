@@ -67,22 +67,17 @@ $(info HOST_HEADERS (after EXTRA) = $(HOST_HEADERS))
 $(info HOST_SRCS (after EXTRA) = $(HOST_SRCS))
 CXXFLAGS += -I$(TemplaeHostDir)
 include $(TemplateRepoDir)/makefiles/host.mk
-
-# This is a copy of the instruction just for debugging purposes
-INSTR_REDUDENT_TARGETS := $(patsubst ${BITSTREAM_O_DIR}/from_iron/%.txt, ${HOME_DIR}/build/insts/%.txt.redundant, ${IRON_BOTH_INSTS_TARGET})
-
-
-.PHONY: prerequsite run all kernel link bitstream host clean instructions
-all:  ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
-
-prerequsite:
-	ln -s ${TemplateRepoDir}/common ${HOME_DIR}/common
+.PHONY: run all kernel link bitstream host clean instructions route
+all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 
 clean:
 	-@rm -rf build 
 	-@rm -rf log
-	-@rm -rf host.exe
+	-@rm -rf *.exe
 	-@rm -rf trace*
+	-@rm -rf route.json
+	-@rm -rf generated.txt
+	-@rm -rf route*.txt
 
 test:
 	echo "test"
@@ -92,7 +87,7 @@ test:
 kernel: ${KERNEL_OBJS}
 
 
-instructions: ${INSTS_TARGETS} ${INSTR_REDUDENT_TARGETS}
+instructions: ${INSTS_TARGETS}
 
 
 link: ${MLIR_TARGET} 
@@ -107,8 +102,18 @@ host: ${HOST_C_TARGET}
 clean_host:
 	-@rm -rf build/host
 
-${HOME_DIR}/build/insts/%.txt.redundant: ${BITSTREAM_O_DIR}/from_iron/%.txt
-	cp $< $@
 
-run: ${HOST_C_TARGET} ${XCLBIN_TARGET} ${INSTS_TARGET} ${INSTR_REDUDENT_TARGETS}
+run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
 	./${HOST_C_TARGET} | tee out.log
+# compare the generated.txt with the insts, if not the same, say error
+# @if diff -q generated.txt ${INSTS_TARGETS}; then \
+# 	echo "PASS"; \
+# else \
+# 	echo "FAIL"; \
+# 	exit 1; \
+# fi
+
+
+route: ${IRON_BOTH_MLIR_TARGET}
+	aie-opt --aie-create-pathfinder-flows --aie-find-flows ${<} | aie-translate --aie-flows-to-json > route.json
+	python ${TemplateRepoDir}/visualize.py -j route.json
