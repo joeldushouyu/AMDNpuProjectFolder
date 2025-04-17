@@ -28,6 +28,9 @@ from aie.dialects import memref
 #given a 512x512 matrix size and 512x`1 vector
 
 
+
+
+
 def single_mat_vect_mult():
     dev = AIEDevice.npu2
     
@@ -48,91 +51,91 @@ def single_mat_vect_mult():
         K_div_k = K_size//k_size
         m_x_K = m_size * K_size
         m_x_k = m_size*k_size
-        A_ty = np.ndarray[( m_size * k_size,), dtype_in]
+        In_Matrix_ty = np.ndarray[( m_size * k_size,), dtype_in]
 
-        B_ty = np.ndarray[(k_size,), dtype_in]
-        C_ty = np.ndarray[(m_size, ), dtype_out]
+        IN_Vector_ty = np.ndarray[(k_size,), dtype_in]
+        Out_Vector_ty = np.ndarray[(m_size, ), dtype_out]
             
-        zero = external_func("zero_m_float32", inputs=[C_ty])
+        zero = external_func("zero_m_float32", inputs=[Out_Vector_ty])
         matvec = external_func(
             "mv_float32",
-            inputs=[A_ty, B_ty, C_ty],
+            inputs=[In_Matrix_ty, IN_Vector_ty, Out_Vector_ty],
         )
         
         # define the the shim_dma
         
-        memref.global_("C_MT_SHM", T.memref( K_size, T.f32() ), sym_visibility="public")
-        memref.global_("A_SHM_MT", T.memref(M_size*K_size, T.f32()), sym_visibility="public")
-        memref.global_("B_SHM_MT", T.memref(K_size, T.f32()), sym_visibility="public")
+        memref.global_("Vector_MT0_SHM0", T.memref( K_size, T.f32() ), sym_visibility="public")
+        memref.global_("Matrix_SHM0_MT0", T.memref(M_size*K_size, T.f32()), sym_visibility="public")
+        memref.global_("Vector_SHM0_MT0", T.memref(K_size, T.f32()), sym_visibility="public")
         
-        shim_dma_allocation("C_MT_SHM", DMAChannelDir.S2MM, 0,0)
-        shim_dma_allocation("A_SHM_MT", DMAChannelDir.MM2S, 0, 0)
-        shim_dma_allocation("B_SHM_MT", DMAChannelDir.MM2S, 1, 0)
+        shim_dma_allocation("Vector_MT0_SHM0", DMAChannelDir.S2MM, 0,0)
+        shim_dma_allocation("Matrix_SHM0_MT0", DMAChannelDir.MM2S, 0, 0)
+        shim_dma_allocation("Vector_SHM0_MT0", DMAChannelDir.MM2S, 1, 0)
         # Tile declarations
-        ShimTile = tile(0,0)
-        MemTile = tile(0,1)
-        ComputeTile = tile(0,2)
+        ShimTile_0 = tile(0,0)
+        MemTile_0 = tile(0,1)
+        ComputeTile_0 = tile(0,2)
         
     
         # Memtile elements
-        inA_mem_prod_lock = lock(MemTile, lock_id= 0, init = 2)
-        inA_mem_con_lock = lock(MemTile, lock_id=1, init= 0)
+        inA_mem_prod_lock = lock(MemTile_0, lock_id= 0, init = 2)
+        inA_mem_con_lock = lock(MemTile_0, lock_id=1, init= 0)
         inA_mem_buffers = [
-            buffer( tile=MemTile, datatype=A_ty, name="inA_shm_to_mt_0"),
-            buffer( tile=MemTile, datatype=A_ty, name="inA_shm_to_mt_1")
+            buffer( tile=MemTile_0, datatype=In_Matrix_ty, name="inA_shm_to_mt_0"),
+            buffer( tile=MemTile_0, datatype=In_Matrix_ty, name="inA_shm_to_mt_1")
         ]
         
-        inB_mem_prod_lock = lock(MemTile, lock_id=2, init=2)
-        inB_mem_con_lock = lock(MemTile, lock_id=3, init= 0)
+        inB_mem_prod_lock = lock(MemTile_0, lock_id=2, init=2)
+        inB_mem_con_lock = lock(MemTile_0, lock_id=3, init= 0)
         inB_mem_buffers = [
-            buffer(tile=MemTile, datatype=B_ty, name="inB_shim_to_mt_0" ),
-            buffer(tile=MemTile, datatype=B_ty, name="inB_shim_to_mt_1" )
+            buffer(tile=MemTile_0, datatype=IN_Vector_ty, name="inB_shim_to_mt_0" ),
+            buffer(tile=MemTile_0, datatype=IN_Vector_ty, name="inB_shim_to_mt_1" )
         ]
         
-        outC_mem_prod_lock = lock(MemTile, lock_id=4, init=2)
-        outC_mem_con_lock = lock(MemTile, lock_id=5, init=0)
+        outC_mem_prod_lock = lock(MemTile_0, lock_id=4, init=2)
+        outC_mem_con_lock = lock(MemTile_0, lock_id=5, init=0)
         outC_mem_buffers = [
-            buffer(tile=MemTile, datatype=C_ty, name="outC_mt_to_shim_0"),
-            buffer(tile=MemTile, datatype=C_ty, name="outC_mt_to_shim_1")
+            buffer(tile=MemTile_0, datatype=Out_Vector_ty, name="outC_mt_to_shim_0"),
+            buffer(tile=MemTile_0, datatype=Out_Vector_ty, name="outC_mt_to_shim_1")
         ]
         
         
         # CT elements
-        inA_CT_prod_lock = lock(ComputeTile, lock_id=0, init=2, sym_name="inA_CT_prod_lock")
-        inA_CT_con_lock = lock(ComputeTile, lock_id=1, init=0, sym_name="inA_CT_con_lock")
+        inA_CT_prod_lock = lock(ComputeTile_0, lock_id=0, init=2, sym_name="inA_CT_prod_lock")
+        inA_CT_con_lock = lock(ComputeTile_0, lock_id=1, init=0, sym_name="inA_CT_con_lock")
         inA_CT_buffers  = [
-            buffer(tile=ComputeTile, datatype=A_ty, name="inA_mt_to_ct_0"),
-            buffer(tile=ComputeTile, datatype=A_ty, name="inA_mt_to_ct_1")
+            buffer(tile=ComputeTile_0, datatype=In_Matrix_ty, name="inA_mt_to_ct_0"),
+            buffer(tile=ComputeTile_0, datatype=In_Matrix_ty, name="inA_mt_to_ct_1")
         ]   
         
-        inB_CT_prod_lock = lock(ComputeTile, lock_id=2, init=2, sym_name="inB_CT_prod_lock")
-        inB_CT_con_lock = lock(ComputeTile, lock_id=3, init=0, sym_name="inB_CT_con_lock")
+        inB_CT_prod_lock = lock(ComputeTile_0, lock_id=2, init=2, sym_name="inB_CT_prod_lock")
+        inB_CT_con_lock = lock(ComputeTile_0, lock_id=3, init=0, sym_name="inB_CT_con_lock")
         inB_CT_buffers = [
-            buffer(tile=ComputeTile, datatype=B_ty, name="inB_mt_to_ct_0"),
-            buffer(tile=ComputeTile, datatype=B_ty, name="inB_mt_to_ct_1")
+            buffer(tile=ComputeTile_0, datatype=IN_Vector_ty, name="inB_mt_to_ct_0"),
+            buffer(tile=ComputeTile_0, datatype=IN_Vector_ty, name="inB_mt_to_ct_1")
         ]
         
-        outC_CT_prod_lock = lock(ComputeTile, lock_id=4, init=2,sym_name="outC_CT_prod_lock")
-        outC_CT_con_lock = lock(ComputeTile, lock_id=5, init=0, sym_name="outC_CT_con_lock")
+        outC_CT_prod_lock = lock(ComputeTile_0, lock_id=4, init=2,sym_name="outC_CT_prod_lock")
+        outC_CT_con_lock = lock(ComputeTile_0, lock_id=5, init=0, sym_name="outC_CT_con_lock")
         outC_CT_buffers = [
-            buffer(tile=ComputeTile, datatype=C_ty, name="in_C_ct_to_mt_0"),
-            buffer(tile=ComputeTile, datatype=C_ty, name="in_C_ct_to_mt_1")
+            buffer(tile=ComputeTile_0, datatype=Out_Vector_ty, name="in_C_ct_to_mt_0"),
+            buffer(tile=ComputeTile_0, datatype=Out_Vector_ty, name="in_C_ct_to_mt_1")
         ]
         
         # define the data flow of it
         # Shimtille with Memtile
-        flow(ShimTile, WireBundle.DMA, 0, MemTile, WireBundle.DMA, 0) # A input path
-        flow(ShimTile, WireBundle.DMA, 1, MemTile, WireBundle.DMA, 1 ) # B input path
-        flow(MemTile,  WireBundle.DMA, 2, ShimTile, WireBundle.DMA, 0)
+        flow(ShimTile_0, WireBundle.DMA, 0, MemTile_0, WireBundle.DMA, 0) # A input path
+        flow(ShimTile_0, WireBundle.DMA, 1, MemTile_0, WireBundle.DMA, 1 ) # B input path
+        flow(MemTile_0,  WireBundle.DMA, 2, ShimTile_0, WireBundle.DMA, 0)
         
         # Memtile vs Computetile
-        flow(MemTile, WireBundle.DMA, 0, ComputeTile, WireBundle.DMA, 0)# A
-        flow(MemTile, WireBundle.DMA, 1, ComputeTile, WireBundle.DMA, 1)# B
-        flow(ComputeTile, WireBundle.DMA, 0, MemTile, WireBundle.DMA, 2) # C
+        flow(MemTile_0, WireBundle.DMA, 0, ComputeTile_0, WireBundle.DMA, 0)# A
+        flow(MemTile_0, WireBundle.DMA, 1, ComputeTile_0, WireBundle.DMA, 1)# B
+        flow(ComputeTile_0, WireBundle.DMA, 0, MemTile_0, WireBundle.DMA, 2) # C
         
         
         # DMA logic for memorytile
-        @memtile_dma(MemTile)
+        @memtile_dma(MemTile_0)
         def m(block):
             # Receive a from Shimtile to Mt
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
@@ -216,7 +219,7 @@ def single_mat_vect_mult():
                 EndOp()                                                                     
 
         # memory logic for compute tile
-        @mem(ComputeTile)
+        @mem(ComputeTile_0)
         def m(block):
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
 
@@ -256,7 +259,7 @@ def single_mat_vect_mult():
                 next_bd(block[7])       
             with block[9]:
                 EndOp()
-        @core(ComputeTile,  "mv_float.o")
+        @core(ComputeTile_0,  "mv_float.o")
         def core_body():
             for _ in range_(sys.maxsize):
 
@@ -297,14 +300,7 @@ def single_mat_vect_mult():
                 for _ in range_(repeat_ping_ping):
                     buffer_0()
                     buffer_1()
-                # buffer_0()
-                # buffer_1()
-                # buffer_0()
-                # buffer_1()
-                # buffer_0()
-                # buffer_1()
-                # buffer_0()
-                # buffer_1()                
+              
                 use_lock(outC_CT_con_lock, LockAction.Release,value=1) 
 
                 
@@ -315,7 +311,7 @@ def single_mat_vect_mult():
                 # assert r * m  == M
                 # rtp_buffer[0] = 1 TODO
                 npu_dma_memcpy_nd(
-                    metadata="B_SHM_MT",
+                    metadata="Vector_SHM0_MT0",
                     bd_id=2,
                     mem=B,
                     offsets=[0, 0, 0, 0],
@@ -327,7 +323,7 @@ def single_mat_vect_mult():
                 A_offset = 0
                 C_offset = 0
                 npu_dma_memcpy_nd(
-                    metadata="A_SHM_MT",
+                    metadata="Matrix_SHM0_MT0",
                     bd_id=1,
                     mem=A,
                 
@@ -336,7 +332,7 @@ def single_mat_vect_mult():
                     strides=[m_x_K, k_size, K_size, 1],
                 )
                 npu_dma_memcpy_nd(
-                    metadata="C_MT_SHM",
+                    metadata="Vector_MT0_SHM0",
                     bd_id=0,
                     mem=C,
                     
@@ -344,7 +340,7 @@ def single_mat_vect_mult():
                     sizes=[1, 1, M_size // m_size, m_size],  #TODO:
                     strides=[0, 0,  m_size, 1],
                 )
-                npu_dma_wait("C_MT_SHM")
+                npu_dma_wait("Vector_MT0_SHM0")
     
 with mlir_mod_ctx() as ctx:
     single_mat_vect_mult()
