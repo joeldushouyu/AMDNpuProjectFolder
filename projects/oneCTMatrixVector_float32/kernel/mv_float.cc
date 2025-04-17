@@ -110,7 +110,7 @@ void matVec_float32(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c)
             
             aie::vector<T_in, 16> b_vec = aie::load_v<16>(b_ptr);
             
-            //TODO: #pragma clang loop unroll_count(16)
+            #pragma clang loop unroll_count(16)
             for (unsigned int l = 0; l < 16; l++){
                 // load each A1... An and scatter each 
                 aie::vector<T_in, 16> a_vec_0 = aie::load_v<16>(a_ptr);

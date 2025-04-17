@@ -20,7 +20,39 @@
 #include "experimental/xrt_queue.h"
 
 namespace po = boost::program_options;
+#include <vector>
+#include <cmath>    // For std::fabs, std::max
+#include <algorithm> // For std::max
 
+
+bool are_results_close(
+    buffer<float>& y_cpu,
+    buffer<float>& y_npu,
+    float rtol = 1e-5f,  // Relative tolerance (1e-5 = 0.001%)
+    float atol = 1e-6f   // Absolute tolerance (1e-6 = 0.0001%)
+) {
+    // First check vector sizes match
+    if (y_cpu.size() != y_npu.size()) {
+        return false;
+    }
+
+    // Component-wise comparison
+    for (size_t i = 0; i < y_cpu.size(); ++i) {
+        const float a = y_cpu[i];
+        const float b = y_npu[i];
+        const float abs_diff = std::fabs(a - b);
+
+        // Calculate acceptable tolerance threshold
+        const float threshold = atol + rtol * std::max(std::fabs(a), std::fabs(b));
+
+        // Early exit if any element fails
+        if (abs_diff > threshold) {
+            return false;
+        }
+    }
+
+    return true;
+}
 buffer<float> test_func(){
     buffer<float> w(100);
     for (int i = 0; i < 100; i++){
@@ -85,13 +117,27 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME, 5, app_id_0);
 
 
+
+    // random float, not in in this case
+    std::random_device rd;
+    std::mt19937                  gen(rd());
+    std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);
+
     for (int i = 0; i < W_VOLUME; i++){
-        w_0[i] = utils::getRandInt(-10, 10);
+        w_0[i] = dist(gen);
     }
 
     for (int i = 0; i < X_VOLUME; i++){
-        x_0[i] = utils::getRandInt(-10, 10);
+        x_0[i] = dist(gen);
     }
+    x_0[0] = 1.23334;
+    // for (int i = 0; i < W_VOLUME; i++){
+    //     w_0[i] = utils::getRandInt(-10, 10);
+    // }
+
+    // for (int i = 0; i < X_VOLUME; i++){
+    //     x_0[i] = utils::getRandInt(-10, 10);
+    // }
  
     header_print("info", "Calculate reference for " << M << "x" << K << "x" << N);
     buffer<dtype_out> y_ref_0(Y_VOLUME);    
@@ -125,11 +171,19 @@ int main(int argc, const char *argv[]) {
     y_0.sync_from_device();    
     header_print("info", "Finished running kernel");
 
-    bool pass = true;
-    if (utils::compare_vectors(y_0, y_ref_0,1, 1e-3) > 0){
-        pass = false;
-    }
+    // bool pass = true;
+    // if (utils::compare_vectors(y_0, y_ref_0,1, 1e-3) > 0){
+    //     pass = false;
+    // }
 
+    bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
+    for (size_t i = 0; i < y_0.size(); i++) {
+        std::cout << std::scientific      // Use exponential notation
+                  << std::setprecision(6) // Show 2 digits after decimal
+                  << "y[" << i << "] = " << y_0[i]
+                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+                  << std::endl;
+    }
     // run with runlist
     xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
     y_0.memset(0);
