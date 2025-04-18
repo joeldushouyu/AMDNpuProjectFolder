@@ -44,7 +44,7 @@ def single_mat_vect_mult():
     @device(AIEDevice.npu2)
     
     def device_body():
-        vector_size = 256
+        vector_size = 64
         In_Vector_ty = np.ndarray[ (vector_size, ), dtype_in  ]
         Out_Vector_ty = np.ndarray[ (vector_size,), dtype_out]
 

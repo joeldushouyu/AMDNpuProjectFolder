@@ -87,7 +87,7 @@ int main(int argc, const char *argv[]) {
     // int W_VOLUME = M * K;
     // int X_VOLUME = 1 * K;
     int Iterations = 10;
-    int vectorSize = 256;
+    int vectorSize = 64;
 
     // NPU instance
     npu_app npu_instance(1);
