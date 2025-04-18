@@ -86,7 +86,7 @@ int main(int argc, const char *argv[]) {
     // int Y_VOLUME = M * 1;
     // int W_VOLUME = M * K;
     // int X_VOLUME = 1 * K;
-    int Iterations = 1;
+    int Iterations = 10;
     int vectorSize = 256;
 
     // NPU instance
@@ -125,23 +125,11 @@ int main(int argc, const char *argv[]) {
     std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);
 
     for (int i = 0; i < vectorSize; i++){
-        w_0[i] = utils::getRandInt(-10, 10);
-        w_1[i] = utils::getRandInt(-10, 10);
+        w_0[i] = dist(gen);
+        w_1[i] =dist(gen);
         
     }
 
-
-    // for (int i = 0; i < W_VOLUME; i++){
-    //     w_0[i] = utils::getRandInt(-10, 10);
-    // }
-
-    // for (int i = 0; i < X_VOLUME; i++){
-    //     x_0[i] = utils::getRandInt(-10, 10);
-    // }
-
-    // buffer<dtype_out> y_ref_0(Y_VOLUME);    
-    // buffer<dtype_out> y_ref_1(Y_VOLUME);    
-    // linear(y_ref_0, w_0, x_0);
 
     w_0.sync_to_device();
     w_1.sync_to_device();
@@ -173,51 +161,52 @@ int main(int argc, const char *argv[]) {
 
     bool pass = are_results_close<dtype_out>(y_0, w_0, 1e-4f, 1e-3f);
     pass &= are_results_close<dtype_out>(y_1, w_1, 1e-4f, 1e-3f);
-    for (size_t i = 0; i < y_0.size(); i++) {
-        std::cout << std::scientific      // Use exponential notation
-                  << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_0[i]
-                  << " ?= y_ref[" << i << "] = " << w_0[i]
-                  << std::endl;
+    // for (size_t i = 0; i < y_0.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << y_0[i]
+    //               << " ?= y_ref[" << i << "] = " << w_0[i]
+    //               << std::endl;
+    // }
+
+    // for (size_t i = 0; i < y_1.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << y_1[i]
+    //               << " ?= y_ref[" << i << "] = " << w_1[i]
+    //               << std::endl;
+    // }    
+    // run with runlist
+    xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
+    y_0.memset(0);
+    y_1.memset(0);
+    for (int i = 0; i < Iterations; i++){
+        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), w_1.bo(), y_1.bo());
+        runlist.add(run_0);
     }
-
-    for (size_t i = 0; i < y_1.size(); i++) {
-        std::cout << std::scientific      // Use exponential notation
-                  << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_1[i]
-                  << " ?= y_ref[" << i << "] = " << w_1[i]
-                  << std::endl;
-    }    
-    // // run with runlist
-    // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
-    // y_0.memset(0);
-    // for (int i = 0; i < Iterations; i++){
-    //     xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
-    //     runlist.add(run_0);
-    // }
     
-    // npu_time.first = 0;
+    npu_time.first = 0;
 
-    // {
-    //     time_utils::time_point start = time_utils::now();
-    //     runlist.execute();
-    //     runlist.wait();
-    //     time_utils::time_point stop = time_utils::now();
-    //     npu_time.first += time_utils::duration_us(start, stop).first;
-    // }
-    // npu_time.first /= Iterations * 2.0;
-    // MSG_BONDLINE(40);
-    // MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
-    // MSG_BONDLINE(40);
-    // y_0.sync_from_device();    
-
+    {
+        time_utils::time_point start = time_utils::now();
+        runlist.execute();
+        runlist.wait();
+        time_utils::time_point stop = time_utils::now();
+        npu_time.first += time_utils::duration_us(start, stop).first;
+    }
+    npu_time.first /= Iterations * 2.0;
+    MSG_BONDLINE(40);
+    MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
+    MSG_BONDLINE(40);
+    y_0.sync_from_device();    
+    y_1.sync_from_device();
     if (pass){
         header_print("info", "PASSED ");
     } else {
         header_print("info", "FAILED!");
     }
 
-    // utils::print_npu_profile(npu_time, 2.0 * float(M) * float(K) * float(N), 1000);
+
     return 0;
 }
 

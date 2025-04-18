@@ -17,8 +17,8 @@
 #include "xrt/xrt_kernel.h"
 #include "buffer.hpp"
 
-typedef int32_t dtype_in;
-typedef int32_t dtype_out;
+typedef float dtype_in;
+typedef float dtype_out;
 
 
 #endif

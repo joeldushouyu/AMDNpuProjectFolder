@@ -37,8 +37,8 @@ def single_mat_vect_mult():
     
 
     
-    dtype_in = np.dtype[np.int32]  
-    dtype_out = np.dtype[np.int32]
+    dtype_in = np.dtype[np.float32]  
+    dtype_out = np.dtype[np.float32]
     
     
     @device(AIEDevice.npu2)
@@ -49,17 +49,13 @@ def single_mat_vect_mult():
         Out_Vector_ty = np.ndarray[ (vector_size,), dtype_out]
 
         
-        passThrough_func = external_func("passThroughLine",
+        passThrough_func = external_func("passThroughLine_float32",
                                          inputs=[In_Vector_ty, Out_Vector_ty, np.int32]) 
         
-
-        #TODO:L functions
-        
-        
-        memref.global_("SHM0_CT_0_0", T.memref( vector_size, T.i32()), sym_visibility="public")
-        memref.global_("CT_0_0_SHM0", T.memref( vector_size, T.i32()), sym_visibility="public")
-        memref.global_("SHM1_CT_1_0", T.memref(vector_size, T.i32()), sym_visibility="public")
-        memref.global_("CT_1_0_SHM1", T.memref(vector_size, T.i32()), sym_visibility="public")
+        memref.global_("SHM0_CT_0_0", T.memref( vector_size, T.f32()), sym_visibility="public")
+        memref.global_("CT_0_0_SHM0", T.memref( vector_size, T.f32()), sym_visibility="public")
+        memref.global_("SHM1_CT_1_0", T.memref(vector_size, T.f32()), sym_visibility="public")
+        memref.global_("CT_1_0_SHM1", T.memref(vector_size, T.f32()), sym_visibility="public")
         
         shim_dma_allocation("SHM0_CT_0_0", DMAChannelDir.MM2S, 0,0)
         shim_dma_allocation("CT_0_0_SHM0", DMAChannelDir.S2MM, 1,0)
@@ -175,9 +171,7 @@ def single_mat_vect_mult():
                 in_v_a =  inV_CT_0_0_buffers[0]
                 out_v_a = outV_CT_0_0_buffers[0]
                 passThrough_func(in_v_a, out_v_a, constant(vector_size))
-                
-                # for c in range_(vector_size):
-                #     out_v_a[c] = in_v_a[c]
+
                 use_lock(outV_CT_0_0_con_lock, LockAction.Release, value=1)
                 use_lock(inV_CT_0_0_prod_lock, LockAction.Release, value=1)
 
