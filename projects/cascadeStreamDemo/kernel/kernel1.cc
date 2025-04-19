@@ -20,7 +20,7 @@
 #include <aie_api/aie.hpp>
 
 
-
+//TODO: multiple vent0?
 template<typename T>
 void loadFloatToCascade(T *__restrict buff, const int size){
     static_assert(std::is_same<T, float>::value);
@@ -33,6 +33,7 @@ void loadFloatToCascade(T *__restrict buff, const int size){
         v16accfloat data_acc = v16accfloat(data);
         //https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Accumulator_Control-CORE_MODULE-Register
         // guessing the en flag is either 0 (to south) and 1 to east for output??
+        event0();
         put_mcd(  data_acc, 1 );
     } 
  

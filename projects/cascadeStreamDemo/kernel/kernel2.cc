@@ -11,7 +11,7 @@
 
 template<typename T>
 void vectorElementWiseMultplication(T *__restrict in_vector, T*__restrict out_vector,  const int size){
-    // 2 vector dot product, the other vector came from cascade stream from neighbort(west)
+    // 2 vector element wise product,  the other vector came from cascade stream from neighbort(west)
 
 
     static_assert(std::is_same<T, float>::value);
@@ -20,6 +20,7 @@ void vectorElementWiseMultplication(T *__restrict in_vector, T*__restrict out_ve
 
     for(unsigned int i = 0; i < size; i+=16){
         aie::vector<float, 16> vec1 = aie::load_v<16>(in_vector);
+        event0();
         v16accfloat vec2 = get_scd_v16accfloat(1 ); // read from west?
 
         aie::accum<accfloat, 16> c_acc_res;

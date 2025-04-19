@@ -53,13 +53,20 @@ bool are_results_close(
 
     return true;
 }
-// buffer<float> test_func(){
-//     buffer<float> w(100);
-//     for (int i = 0; i < 100; i++){
-//         w[i] = i;
-//     }
-//     return w;
-// }
+template<typename T>
+buffer<T> elementwise_product(buffer<T>& a, buffer<T>& b) {
+    if (a.size() != b.size()) {
+        throw std::invalid_argument("Vectors must be of the same length.");
+    }
+
+    buffer<T> result(a.size());
+    for (size_t i = 0; i < a.size(); ++i) {
+        result[i] = a[i] * b[i];
+    }
+    return result;
+}
+
+
 
 void linear(buffer<dtype_out>& y, buffer<dtype_in>& w, buffer<dtype_in>& x);
 
@@ -72,22 +79,23 @@ int main(int argc, const char *argv[]) {
     arg_utils::add_default_options(desc);
 
     // Add custom options
-    // desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
-    // desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
-    // desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
+    desc.add_options()("V,v", po::value<int>()->default_value(512 ), "M");
+    desc.add_options()("T,t", po::value<int>()->default_value(3072), "K");
+    desc.add_options()("I,i", po::value<int>()->default_value(1), "Iterations");
 
     arg_utils::parse_options(argc, argv, desc, vm);
     
     // User logic
-    // int M = vm["M"].as<int>();
-    // int K = vm["K"].as<int>();
-    // int Iterations = vm["I"].as<int>();
+    int vectorSize = vm["V"].as<int>();
+    int trace_size = vm["T"].as<int>();
+    int Iterations = vm["I"].as<int>();
     // int N = 1;
     // int Y_VOLUME = M * 1;
     // int W_VOLUME = M * K;
     // int X_VOLUME = 1 * K;
-    int Iterations = 10;
-    int vectorSize = 64;
+    // int Iterations = 10;
+    // int vectorSize = 1024;
+    // int trace_size  = 4096;
 
     // NPU instance
     npu_app npu_instance(1);
@@ -106,20 +114,20 @@ int main(int argc, const char *argv[]) {
     int app_id_0 = npu_instance.register_accel_app(accel_desc_0);
 
     npu_instance.interperate_bd(0);
-    // npu_instance.interperate_bd(1);
 
-    // compare the two sequences
-    buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
 
+    buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(vectorSize, 3, app_id_0);
+    buffer<dtype_in> w_1 = npu_instance.create_bo_buffer<dtype_in>(vectorSize, 4, app_id_0);
+    buffer<dtype_out> y_1 = npu_instance.create_bo_buffer<dtype_out>(vectorSize, 5, app_id_0);
+
+
+    int tmp_trace_size  = (trace_size > 0)? trace_size: 1;
+    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size, 7, app_id_0);
 
     
-    buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(vectorSize, 3, app_id_0);
-    buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(vectorSize, 4, app_id_0);
-    buffer<dtype_in> w_1 = npu_instance.create_bo_buffer<dtype_in>(vectorSize, 5, app_id_0);
-    buffer<dtype_out> y_1 = npu_instance.create_bo_buffer<dtype_out>(vectorSize, 6, app_id_0);
 
 
-    // random float, not in in this case
+    // DATA initalizatio
     std::random_device rd;
     std::mt19937                  gen(rd());
     std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);
@@ -129,14 +137,26 @@ int main(int argc, const char *argv[]) {
         w_1[i] =dist(gen);
         
     }
-
+    w_0[2] = 0.0;
+    buffer<dtype_out> y_ref = elementwise_product(w_0, w_1);
+    char *bufTrace = trace_res.data();
 
     w_0.sync_to_device();
     w_1.sync_to_device();
+    if(trace_size > 0){ 
+        
+        memset(bufTrace, 0, trace_size); 
+        trace_res.sync_to_device();  
+    }
+    
+    // if(trace_size>0){
+    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), w_1.bo(), y_1.bo(),  trace_res.bo());
+    // }else{
+    //     auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), w_1.bo(), y_1.bo());
+    // }
+    
 
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), w_1.bo(), y_1.bo());
 
-	
     header_print("info", "Running runtime test.");
     header_print("info", "Running kernel with bare call.");
     time_utils::time_with_unit npu_time = {0.0, "us"};
@@ -153,53 +173,31 @@ int main(int argc, const char *argv[]) {
     MSG_BONDLINE(40);
     MSG_BOX_LINE(40, "NPU time with bare call: " << npu_time.first << " us");
     MSG_BONDLINE(40);
-    y_0.sync_from_device();
-    y_1.sync_from_device();    
+
+
+    y_1.sync_from_device();   
+    if(trace_size > 0){
+        trace_res.sync_from_device();
+        npu_instance.write_out_trace(((char *)bufTrace), trace_size,
+        "trace.txt");
+    }
+
     
     header_print("info", "Finished running kernel");
 
 
-    bool pass = are_results_close<dtype_out>(y_0, w_0, 1e-4f, 1e-3f);
-    pass &= are_results_close<dtype_out>(y_1, w_1, 1e-4f, 1e-3f);
-    // for (size_t i = 0; i < y_0.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "y[" << i << "] = " << y_0[i]
-    //               << " ?= y_ref[" << i << "] = " << w_0[i]
-    //               << std::endl;
-    // }
 
-    // for (size_t i = 0; i < y_1.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "y[" << i << "] = " << y_1[i]
-    //               << " ?= y_ref[" << i << "] = " << w_1[i]
-    //               << std::endl;
-    // }    
-    // run with runlist
-    xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
-    y_0.memset(0);
-    y_1.memset(0);
-    for (int i = 0; i < Iterations; i++){
-        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), w_1.bo(), y_1.bo());
-        runlist.add(run_0);
+    bool pass = are_results_close<dtype_out>(y_ref, y_1, 1e-4f, 1e-3f);
+    // pass &= are_results_close<dtype_out>(y_1, w_1, 1e-4f, 1e-3f);
+    for (size_t i = 0; i < 25; i++) { // first 25
+        std::cout << std::scientific      // Use exponential notation
+                  << std::setprecision(6) // Show 2 digits after decimal
+                  << "y[" << i << "] = " << y_ref[i]
+                  << " ?= y_ref[" << i << "] = " << y_1[i]
+                  << std::endl;
     }
-    
-    npu_time.first = 0;
 
-    {
-        time_utils::time_point start = time_utils::now();
-        runlist.execute();
-        runlist.wait();
-        time_utils::time_point stop = time_utils::now();
-        npu_time.first += time_utils::duration_us(start, stop).first;
-    }
-    npu_time.first /= Iterations * 2.0;
-    MSG_BONDLINE(40);
-    MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
-    MSG_BONDLINE(40);
-    y_0.sync_from_device();    
-    y_1.sync_from_device();
+
     if (pass){
         header_print("info", "PASSED ");
     } else {

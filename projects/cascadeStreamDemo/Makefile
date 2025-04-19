@@ -8,6 +8,8 @@
 
 
 TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/PROJECT/AMDNpuProjectFolder/Template)
+
+MlirDIR ?= $(or $(Mlir_DIR),/home/shouyud/PROJECT/mlir-aie)
 TemplaeHostDir := $(TemplateRepoDir)/host
 
 # create a dynamic link of /common folder, 
@@ -117,3 +119,8 @@ run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
 route: ${IRON_BOTH_MLIR_TARGET}
 	aie-opt --aie-create-pathfinder-flows --aie-find-flows ${<} | aie-translate --aie-flows-to-json > route.json
 	python ${TemplateRepoDir}/visualize.py -j route.json
+
+
+trace: trace.txt
+	${MlirDIR}/programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/mlir/mv.mlir --colshift 0 > cascade.json
+	${MlirDIR}/programming_examples/utils/get_trace_summary.py --filename cascade.json
