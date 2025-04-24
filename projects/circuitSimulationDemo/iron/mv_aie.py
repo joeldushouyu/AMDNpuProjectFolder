@@ -90,7 +90,9 @@ def single_mat_vect_mult():
         
         # Tile declarations
         ShimTile = tile(0,0)
-        ComputeTile_0_2 = tile(0,2)
+        ComputeTile_0_2 = tile(0,2)        
+        # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
+        # ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
         ComputeTile_1_2 = tile(1,2)
         #TODO: profiling for if it makes a different of putting diode_matrix, A,B, C, D matrix together or not
         # allocate buffer for switch_diode_matrix
@@ -99,7 +101,7 @@ def single_mat_vect_mult():
         switch_diode_buffer = [
             buffer(tile=ComputeTile_0_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_{id}") for id in range(total_switch_size)
         ]
-        switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=16, sym_name="switch_diode_prod_lock")
+        switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=total_switch_size, sym_name="switch_diode_prod_lock")
         switch_diode_con_lock = lock(ComputeTile_0_2, lock_id=1, init=0, sym_name="switch_diode_con_lock")
 
 
@@ -107,7 +109,7 @@ def single_mat_vect_mult():
         switch_diode_buffer_debug_out = [
           buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug_{id}") for id in range(total_switch_size)
         ]
-        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=16, sym_name="switch_diode_debug_prod_lock" )
+        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=total_switch_size, sym_name="switch_diode_debug_prod_lock" )
         switch_diode_debug_con_lock = lock(ComputeTile_1_2, lock_id=1, init=0, sym_name="switch_diode_debug_con_lock")
 
 
