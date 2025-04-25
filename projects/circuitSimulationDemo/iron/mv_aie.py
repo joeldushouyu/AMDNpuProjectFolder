@@ -26,7 +26,8 @@ from aie.helpers.dialects.ext.scf import _for as range_
 
 from aie.dialects import memref
 #given a 512x512 matrix size and 512x`1 vector
-
+from aie.dialects._aie_ops_gen import buffer as buffer_raw
+from aie.helpers.util import try_convert_np_type_to_mlir_type
 
 def round_to_nearest_multiple(n, multiple):
   """Rounds an integer to the nearest multiple of a given number"""
@@ -90,26 +91,62 @@ def single_mat_vect_mult():
         
         # Tile declarations
         ShimTile = tile(0,0)
-        ComputeTile_0_2 = tile(0,2)        
+        # ComputeTile_0_2 = tile(0,2)        
         # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
-        # ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
+        ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
         ComputeTile_1_2 = tile(1,2)
         #TODO: profiling for if it makes a different of putting diode_matrix, A,B, C, D matrix together or not
         # allocate buffer for switch_diode_matrix
-        buffer_size_of_each_switch_diode_matrix = _len_of_switch_diode_determine_matrix# round_to_nearest_multiple(_len_of_switch_diode_determine_matrix,16) # round to nearest 16 multipler(256 bit width)
-        switch_diode_matrix_ty = np.ndarray[ (buffer_size_of_each_switch_diode_matrix, ), dtype_in]
-        switch_diode_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_{id}") for id in range(total_switch_size)
+        
+        
+        buffer_size_of_A_B_matrix = _len_of_A_B_matrix* total_switch_size# round_to_nearest_multiple(_len_of_A_B_matrix,16)   # 4 byte each float, 8 bit each byte. Round to nearest 256 bit
+        buffer_size_of_switch_diode = _len_of_switch_diode_determine_matrix*total_switch_size
+        buffer_size_of_C_D_imp_non = _len_of_C_imp_D_imp*total_switch_size#round_to_nearest_multiple(_len_of_C_imp_D_imp, 16)
+        
+        
+        buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode + buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non +buffer_size_of_C_D_imp_non )
+        # define a ping pong for it?
+        
+        max_iteration_step = int(round_to_nearest_multiple( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) 
+        # print(max_iteration_step)
+
+        in_data_ty = np.ndarray[ (len_of_input_for_each_iteration*(max_iteration_step//2), ), dtype_in]
+        out_data_ty = np.ndarray[ (output_size*(max_iteration_step//2), ), dtype_out]
+        in_buffer = [
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
         ]
-        switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=total_switch_size, sym_name="switch_diode_prod_lock")
+        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=1)
+        in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
+        # out_buffer = [
+        #   buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+        # ]
+        out_buffer = [
+            #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
+        ]        
+        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=1)
+        out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
+                
+        
+        
+        
+        
+
+        switch_diode_matrix_ty = np.ndarray[ (buffer_size_of_switch_diode, ), dtype_in]
+        switch_diode_buffer = [
+            buffer(tile=ComputeTile_0_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer") 
+        ]
+        switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=1, sym_name="switch_diode_prod_lock")
         switch_diode_con_lock = lock(ComputeTile_0_2, lock_id=1, init=0, sym_name="switch_diode_con_lock")
 
 
         # Debug Buffer
         switch_diode_buffer_debug_out = [
-          buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug_{id}") for id in range(total_switch_size)
+          buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug") 
         ]
-        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=total_switch_size, sym_name="switch_diode_debug_prod_lock" )
+        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=1, sym_name="switch_diode_debug_prod_lock" )
         switch_diode_debug_con_lock = lock(ComputeTile_1_2, lock_id=1, init=0, sym_name="switch_diode_debug_con_lock")
 
 
@@ -117,49 +154,30 @@ def single_mat_vect_mult():
           switch_diode_matrix_ty, switch_diode_matrix_ty, np.int32
         ] )
 
-        """buffer_size_of_each_A_B_matrix = _len_of_A_B_matrix# round_to_nearest_multiple(_len_of_A_B_matrix,16)   # 4 byte each float, 8 bit each byte. Round to nearest 256 bit
-        A_B_matrix_ty = np.ndarray[ (buffer_size_of_each_A_B_matrix, ), dtype_in]
+ 
+        A_B_matrix_ty = np.ndarray[ (buffer_size_of_A_B_matrix, ), dtype_in]
         A_B_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=A_B_matrix_ty, name=f"A_B_buffer_{id}") for id in range(total_switch_size)
+            buffer(tile=ComputeTile_0_2, datatype=A_B_matrix_ty, name=f"A_B_buffer") 
         ]
-        A_B_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=2, init=total_switch_size)
+        A_B_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=2, init=1)
         A_B_buffer_con_lock = lock(ComputeTile_0_2, lock_id=3, init=0)
         
-        buffer_size_of_each_C_D_imp_matrix = _len_of_C_imp_D_imp#round_to_nearest_multiple(_len_of_C_imp_D_imp, 16)
-        C_D_matrix_ty = np.ndarray[ (buffer_size_of_each_C_D_imp_matrix,), dtype_in ]
+
+        C_D_matrix_ty = np.ndarray[ (buffer_size_of_C_D_imp_non,), dtype_in ]
         C_D_imp_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=C_D_matrix_ty, name=f"C_D_imp_buffer_{id}") for id in range(total_switch_size)
+            buffer(tile=ComputeTile_0_2, datatype=C_D_matrix_ty, name=f"C_D_imp_buffer")
         ]
-        C_D_imp_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=4, init=total_switch_size)
+        C_D_imp_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=4, init=1)
         C_D_imp_buffer_con_lock = lock(ComputeTile_0_2, lock_id=5, init=0)
         
         C_D_non_imp_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=C_D_matrix_ty, name=f"C_D_non_imp_buffer_{id}") for id in range(total_switch_size)
+            buffer(tile=ComputeTile_0_2, datatype=C_D_matrix_ty, name=f"C_D_non_imp_buffer") 
         ]
-        C_D_non_imp_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=6, init=total_switch_size)
+        C_D_non_imp_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=6, init=1)
         C_D_non_imp_buffer_con_lock = lock(ComputeTile_0_2, lock_id=7, init=0)
                 
-        # now see what are the size of it for us doing double buffer on both input and output
-        # size remainig
-        buffer_size_for_in_out = (15+16+16)*(1024/4) - (buffer_size_of_each_switch_diode_matrix +buffer_size_of_each_A_B_matrix+2*_len_of_C_imp_D_imp )*total_switch_size
-        # define a ping pong for it?
-        
-        max_iteration_step =  int(round_to_nearest_multiple( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) 
-        # print(max_iteration_step)
 
-        in_data_ty = np.ndarray[ (len_of_input_for_each_iteration*(max_iteration_step//2), ), dtype_in]
-        out_data_ty = np.ndarray[ (output_size*(max_iteration_step//2), ), dtype_out]
-        in_buffer = [
-          buffer(tile=ComputeTile_0_2, datatype=in_data_ty, name=f"in_buffer_{i}") for i in range(2)
-        ]
-        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=1)
-        in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
-        out_buffer = [
-          buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-        ]
-        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=1)
-        out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
-        """
+
         
         """
         #TODO: later step
@@ -198,8 +216,8 @@ def single_mat_vect_mult():
         flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
         
         
-        memref.global_("B_CT_1_2_SHM", T.memref( buffer_size_of_each_switch_diode_matrix*total_switch_size, T.f32() ), sym_visibility="public")
-        memref.global_("A_SHM_CT_0_2", T.memref( buffer_size_of_each_switch_diode_matrix*total_switch_size, T.f32() ), sym_visibility="public")
+        memref.global_("B_CT_1_2_SHM", T.memref( buffer_size_of_switch_diode, T.f32() ), sym_visibility="public")
+        memref.global_("A_SHM_CT_0_2", T.memref( buffer_size_of_switch_diode, T.f32() ), sym_visibility="public")
         shim_dma_allocation("B_CT_1_2_SHM", DMAChannelDir.S2MM, 0, 0)
         shim_dma_allocation("A_SHM_CT_0_2", DMAChannelDir.MM2S, 0, 0)
         
@@ -212,15 +230,13 @@ def single_mat_vect_mult():
           
             start_block=1
             end_block =total_switch_size+start_block
-            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[start_block], chain=block[end_block])  
-            for i in range(end_block-start_block):
-                with block[i + 1]:
-                    use_lock(switch_diode_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(switch_diode_buffer[i], offset=0, len=buffer_size_of_each_switch_diode_matrix)
-                    use_lock(switch_diode_con_lock, LockAction.Release, value=1)
-                    next_index = i + 2 if (i + 2) <= end_block else start_block
-                    next_bd(block[next_index])
-            with block[end_block]:
+            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])  
+            with block[1]:
+                use_lock(switch_diode_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(switch_diode_buffer[0], offset=0, len=buffer_size_of_switch_diode)
+                use_lock(switch_diode_con_lock, LockAction.Release, value=1)
+                next_bd(block[1])
+            with block[2]:
                 EndOp()
                 
                 
@@ -243,18 +259,18 @@ def single_mat_vect_mult():
                 
         @mem(ComputeTile_1_2)
         def m(block):
-          start_block=1
-          end_block = total_switch_size+start_block
-          s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[start_block], chain=block[end_block])  
-          for i in range(end_block-start_block):
-              with block[i + 1]:
-                  use_lock(switch_diode_debug_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                  dma_bd(switch_diode_buffer_debug_out[i], offset=0, len=buffer_size_of_each_switch_diode_matrix)
-                  use_lock(switch_diode_debug_prod_lock, LockAction.Release, value=1)
-                  next_index = i + 2 if (i + 2) <= end_block else start_block
-                  next_bd(block[next_index])
-          with block[end_block]:
-              EndOp()
+        #   start_block=1
+        #   end_block = total_switch_size+start_block
+            s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[2])  
+
+            with block[1]:
+                use_lock(switch_diode_debug_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(switch_diode_buffer_debug_out[0], offset=0, len=buffer_size_of_switch_diode)
+                use_lock(switch_diode_debug_prod_lock, LockAction.Release, value=1)
+    
+                next_bd(block[1])
+            with block[2]:
+                EndOp()
             # start_block=1
             # end_block =1+start_block
             # s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[start_block], chain=block[end_block])  
@@ -273,12 +289,12 @@ def single_mat_vect_mult():
         @core(ComputeTile_1_2, "passThrough.o")
         def core_body():
           for _ in range_(sys.maxsize):
-            for k in range(total_switch_size):
-                use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                pass_through_func( switch_diode_buffer[k], switch_diode_buffer_debug_out[k], constant(buffer_size_of_each_switch_diode_matrix)    )
-                use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
-                use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
+            # for k in range(total_switch_size):
+            use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+            use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
+            pass_through_func( switch_diode_buffer[0], switch_diode_buffer_debug_out[0], constant(buffer_size_of_switch_diode)    )
+            use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
+            use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
             
             # use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
             # use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
@@ -286,17 +302,17 @@ def single_mat_vect_mult():
             #     pass_through_func( switch_diode_buffer[k], switch_diode_buffer_debug_out[k], constant(buffer_size_of_each_switch_diode_matrix)    )
             # use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
             # use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
-        input_size = buffer_size_of_each_switch_diode_matrix*total_switch_size
+        input_size =buffer_size_of_switch_diode
         @runtime_sequence(np.ndarray[(input_size, ), dtype_in], np.ndarray[(input_size, ), dtype_out]  )
         def sequence(A,B):
             npu_dma_memcpy_nd(
                 metadata="A_SHM_CT_0_2",
                 bd_id=1,
-                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,buffer_size_of_each_switch_diode_matrix*total_switch_size],
+                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,input_size],
                 strides=[0,0,0,1]
             )
 
-            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,buffer_size_of_each_switch_diode_matrix*total_switch_size],strides=[0,0,0,1])
+            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,input_size],strides=[0,0,0,1])
 
             npu_dma_wait("B_CT_1_2_SHM")
 with mlir_mod_ctx() as ctx:
