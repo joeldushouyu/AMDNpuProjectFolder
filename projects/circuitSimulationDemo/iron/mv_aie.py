@@ -29,6 +29,8 @@ from aie.dialects import memref
 from aie.dialects._aie_ops_gen import buffer as buffer_raw
 from aie.helpers.util import try_convert_np_type_to_mlir_type
 
+
+from CT_0_2_helper import *
 # def round_to_nearest_multiple(n, multiple):
 #   """Rounds an integer to the nearest multiple of a given number"""
 #   if multiple == 0:
@@ -36,7 +38,17 @@ from aie.helpers.util import try_convert_np_type_to_mlir_type
 #   return ((n + multiple - 1) // multiple) * multiple
 
 
-
+def balance_matrix_transfer_case(switch_diode_matrix_size, A_B_matrix_size, C_D_imp_matrix_size, C_D_non_imp_matrix_size):
+    mid_point = (switch_diode_matrix_size+ A_B_matrix_size+ C_D_imp_matrix_size+C_D_non_imp_matrix_size)//2
+    
+    # possible only two case
+    if(mid_point > switch_diode_matrix_size and mid_point < (switch_diode_matrix_size+A_B_matrix_size)):
+        return 1, mid_point-switch_diode_matrix_size  # case 1
+    elif(mid_point   >  (switch_diode_matrix_size+A_B_matrix_size) and mid_point < (switch_diode_matrix_size+A_B_matrix_size+C_D_imp_matrix_size)):
+        return 2, mid_point-switch_diode_matrix_size-A_B_matrix_size
+    else:
+        raise ValueError("Unexpected scenario")
+    
 
 def custom_floor(x, multiplier):
   return math.floor(x / multiplier) * multiplier
@@ -251,8 +263,10 @@ def single_mat_vect_mult():
         """
 
         
-        #TODO: Balance workload for to port?
-        
+        # strategy to balance out the S2MM workload on two port of CT_0_2
+        S2MM_stratgey, offset = balance_matrix_transfer_case(buffer_size_of_switch_diode, buffer_size_of_A_B_matrix,
+                                                     buffer_size_of_C_D_imp_non, buffer_size_of_C_D_imp_non)
+        """
         @mem(ComputeTile_0_2)
         def m(block):
             s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[5])  
@@ -304,49 +318,24 @@ def single_mat_vect_mult():
                 EndOp()
         """
 
-        
-        def with_block_unroll(block, chain):
-            for idx, prod_locks, buf, off, len, con_locks, nxt_idx in chain:
-                with block[idx]:
-                    for p_lock in prod_locks:
-                        use_lock(p_lock, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd( buf, offset=off, len=len) # only allow one dma_buffers in each with block
-                    for c_lock in con_locks:
-                        use_lock(c_lock, LockAction.Release, value=1)
-                    next_bd(block[nxt_idx])
-        def handle_dma_sequences(block):
-
-            # block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx      
+        @mem(ComputeTile_0_2)
+        def m(block):
+            # block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx 
             chain0 = [
                 (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
                 (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
                 (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
                 (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
             ]
-            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[5])
-            with_block_unroll(block=block, chain=chain0)
-            
             chain1 = [
                 (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
                 (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
             ]
-            with block[5]:
-                s1 = dma_start(DMAChannelDir.S2MM, 1, dest=block[6], chain=block[8])
-            with_block_unroll(block=block, chain=chain1)
-
-
             chain2 = [
                 (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
                 (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
-            ]
-            with block[8]:
-                s2 = dma_start(DMAChannelDir.MM2S, 0, dest=block[9], chain=block[11])
-            with_block_unroll(block=block, chain=chain2)
-            with block[11]:
-                EndOp()
-        @mem(ComputeTile_0_2)
-        def m(block):
-            handle_dma_sequences(block) 
+            ]  
+            handle_dma_sequences(block, chain0=chain0, chain1=chain1, chain2=chain2) 
                 
         @mem(ComputeTile_1_2)
         def m(block):
@@ -378,23 +367,7 @@ def single_mat_vect_mult():
             with block[5]:
                 EndOp()
                 
-                
-                
             
-            # start_block=1
-            # end_block =1+start_block
-            # s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[start_block], chain=block[end_block])  
-
-            # for i in range(end_block-start_block):
-            #     with block[i + 1]:
-            #         use_lock(switch_diode_debug_con_lock, LockAction.AcquireGreaterEqual, value=1)
-            #         for k in range(total_switch_size):
-            #             dma_bd(switch_diode_buffer_debug_out[k], offset=0, len=buffer_size_of_each_switch_diode_matrix)
-            #         use_lock(switch_diode_debug_prod_lock, LockAction.Release, value=1)
-            #         next_index = i + 2 if (i + 2) <= end_block else start_block
-            #         next_bd(block[next_index])
-            # with block[end_block]:
-            #     EndOp()
         @core(ComputeTile_0_2, "passThrough.o")
         def core_body():
             for _ in range_(sys.maxsize):
@@ -444,12 +417,7 @@ def single_mat_vect_mult():
             use_lock(C_D_non_imp_buffer_prod_lock, LockAction.Release, value=1)
             use_lock(C_D_debug_non_imp_buffer_con_lock, LockAction.Release, value=1)
             
-            # use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-            # use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
-            # for k in range(total_switch_size):
-            #     pass_through_func( switch_diode_buffer[k], switch_diode_buffer_debug_out[k], constant(buffer_size_of_each_switch_diode_matrix)    )
-            # use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
-            # use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
+
             
             
         matrix_size =buffer_size_of_switch_diode+buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non*2
