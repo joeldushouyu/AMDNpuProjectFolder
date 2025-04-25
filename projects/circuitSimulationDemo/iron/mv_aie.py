@@ -91,9 +91,9 @@ def single_mat_vect_mult():
         
         # Tile declarations
         ShimTile = tile(0,0)
-        # ComputeTile_0_2 = tile(0,2)        
+        ComputeTile_0_2 = tile(0,2)        
         # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
-        ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
+        # ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
         ComputeTile_1_2 = tile(1,2)
         #TODO: profiling for if it makes a different of putting diode_matrix, A,B, C, D matrix together or not
         # allocate buffer for switch_diode_matrix
@@ -113,19 +113,22 @@ def single_mat_vect_mult():
         in_data_ty = np.ndarray[ (len_of_input_for_each_iteration*(max_iteration_step//2), ), dtype_in]
         out_data_ty = np.ndarray[ (output_size*(max_iteration_step//2), ), dtype_out]
         in_buffer = [
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
+            buffer(tile=ComputeTile_0_2, datatype=in_data_ty, name=f"in_buffer_{i}") for i in range(2)
         ]
+        # in_buffer = [
+        #   buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
+        #   buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
+        # ]
         in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=1)
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
-        # out_buffer = [
-        #   buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-        # ]
         out_buffer = [
-            #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
-        ]        
+          buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+        ]
+        # out_buffer = [
+        #     #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
+        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
+        # ]        
         out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=1)
         out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
                 
