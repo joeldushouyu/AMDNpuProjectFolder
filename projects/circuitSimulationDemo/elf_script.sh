@@ -1,0 +1,1 @@
+/home/shouyud/PROJECT/mlir-aie/ironenv/lib/python3.12/site-packages/llvm-aie/bin/llvm-readelf  --program-headers --section-headers --symbols --stackmap  --stack-sizes -e ./build/bitstream/from_iron/core_0_2.elf 

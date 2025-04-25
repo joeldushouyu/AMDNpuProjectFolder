@@ -117,24 +117,21 @@ def single_mat_vect_mult():
         buffer_size_of_in_ping_pong = len_of_input_for_each_iteration*(iteration_step_per_buffer)
         buffer_size_of_out_ping_pong = output_size*(iteration_step_per_buffer)
         
-        in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong, ), dtype_in]
-        out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong, ), dtype_out]
-        # in_buffer = [
-        #     buffer(tile=ComputeTile_0_2, datatype=in_data_ty, name=f"in_buffer_{i}") for i in range(2)
-        # ]
+        in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong*2, ), dtype_in]
+        out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong*2, ), dtype_out]
+
+        
+        #NOTE: mem_bank flag seem not working anymore after Tile() is configure to basic-sequential address mode
         in_buffer = [
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", address=1024), # 1024 offset, reserve for stack
+
         ]
         in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2)
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
-        # out_buffer = [
-        #   buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-        # ]
+        
+        out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4)
         out_buffer = [
-            #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", address=out_buffer_address ), # 
         ]        
         out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=2)
         out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
@@ -142,7 +139,9 @@ def single_mat_vect_mult():
         
         
         accum_float_value_func = external_func("accum_float_value", inputs=[
-            in_data_ty, out_data_ty,  np.int32, np.int32, np.int32
+            in_data_ty, out_data_ty,  
+            np.int32, np.int32,
+            np.int32, np.int32, np.int32
         ])
         
 
@@ -300,7 +299,7 @@ def single_mat_vect_mult():
                 next_bd(block[7])
             with block[7]:
                 use_lock(in_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(in_buffer[1], offset=0, len=buffer_size_of_in_ping_pong)
+                dma_bd(in_buffer[0], offset=buffer_size_of_in_ping_pong, len=buffer_size_of_in_ping_pong)
                 use_lock(in_buffer_con_lock, LockAction.Release, value=1)
                 next_bd(block[6])
             with block[8]: 
@@ -312,7 +311,7 @@ def single_mat_vect_mult():
                 next_bd(block[10])
             with block[10]:
                 use_lock(out_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(out_buffer[1], offset=0, len = buffer_size_of_out_ping_pong)
+                dma_bd(out_buffer[0], offset=buffer_size_of_out_ping_pong, len = buffer_size_of_out_ping_pong)
                 use_lock(out_buffer_prod_lock, LockAction.Release, value=1)
                 next_bd(block[9])
             with block[11]:
@@ -388,6 +387,7 @@ def single_mat_vect_mult():
                 use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
                 use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
                 accum_float_value_func( in_buffer[0], out_buffer[0],
+                                       constant(0), constant(0),   # ping pong 0, no offset need
                                        constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
                                        )
                 use_lock(out_buffer_con_lock, LockAction.Release, value=1)
@@ -395,7 +395,8 @@ def single_mat_vect_mult():
                 
                 use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
                 use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
-                accum_float_value_func( in_buffer[1], out_buffer[1],
+                accum_float_value_func( in_buffer[0], out_buffer[0],
+                                       constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong),
                                        constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
                                        )
                 use_lock(out_buffer_con_lock, LockAction.Release, value=1)

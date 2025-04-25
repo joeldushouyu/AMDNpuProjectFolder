@@ -47,9 +47,12 @@ __attribute__((noinline)) void passThrough_simple(float *restrict in, float*rest
 
 template<typename T>
 __attribute__((noinline)) void accumValue(float *restrict in, float*restrict out,
+  const int32_t in_offset,  const int32_t out_offset,
   const int32_t iteration_size, const int32_t input_size, const int32_t output_size  
 ){
   
+  in += in_offset;
+  out+= out_offset;
   // assert divide out without any remainder
   int32_t input_per_iteration_size = input_size / iteration_size;
   int32_t output_per_iteration_size = output_size / iteration_size;
@@ -121,8 +124,11 @@ void passThroughLine_float_3(float *in, float *out, int32_t lineWidth) {
   passThrough_simple<float>( in, out, lineWidth);
 }
 
-void accum_float_value(float *in, float *out,  const int32_t iteration_size, const int32_t input_size, const int32_t output_size  ){
-  accumValue<float>(in,out, iteration_size, input_size, output_size);
+void accum_float_value(float *in, float *out, 
+  const int32_t in_offset,  const int32_t out_offset,
+  const int32_t iteration_size, const int32_t input_size, const int32_t output_size  ){
+  accumValue<float>(in,out, in_offset, out_offset,
+     iteration_size, input_size, output_size);
 }
 
 
