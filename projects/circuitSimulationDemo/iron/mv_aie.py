@@ -112,11 +112,11 @@ def single_mat_vect_mult():
         buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode + buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non +buffer_size_of_C_D_imp_non )
         # define a ping pong for it?
         
-        max_iteration_step = int(custom_floor( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) #TODO: round down instead?
-        # print(max_iteration_step)
-
-        buffer_size_of_in_ping_pong = len_of_input_for_each_iteration*(max_iteration_step//2)
-        buffer_size_of_out_ping_pong = output_size*(max_iteration_step//2)
+        _max_iteration_step = int(custom_floor( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) #TODO: round down instead?
+        iteration_step_per_buffer = _max_iteration_step //2
+        buffer_size_of_in_ping_pong = len_of_input_for_each_iteration*(iteration_step_per_buffer)
+        buffer_size_of_out_ping_pong = output_size*(iteration_step_per_buffer)
+        
         in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong, ), dtype_in]
         out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong, ), dtype_out]
         # in_buffer = [
@@ -126,7 +126,7 @@ def single_mat_vect_mult():
           buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
           buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
         ]
-        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=1)
+        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2)
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
         # out_buffer = [
         #   buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
@@ -136,12 +136,14 @@ def single_mat_vect_mult():
             buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
             buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
         ]        
-        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=1)
+        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=2)
         out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
                 
         
         
-        
+        accum_float_value_func = external_func("accum_float_value", inputs=[
+            in_data_ty, out_data_ty,  np.int32, np.int32, np.int32
+        ])
         
 
         switch_diode_matrix_ty = np.ndarray[ (buffer_size_of_switch_diode, ), dtype_in]
@@ -248,14 +250,7 @@ def single_mat_vect_mult():
           
         # )
         """
-        flow(ShimTile, WireBundle.DMA, 0, ComputeTile_0_2, WireBundle.DMA, 0)
-        flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
-        
-        
-        memref.global_("B_CT_1_2_SHM", T.memref( buffer_size_of_switch_diode, T.f32() ), sym_visibility="public")
-        memref.global_("A_SHM_CT_0_2", T.memref( buffer_size_of_switch_diode, T.f32() ), sym_visibility="public")
-        shim_dma_allocation("B_CT_1_2_SHM", DMAChannelDir.S2MM, 0, 0)
-        shim_dma_allocation("A_SHM_CT_0_2", DMAChannelDir.MM2S, 0, 0)
+
         
         #TODO: Balance workload for to port?
         
@@ -297,8 +292,31 @@ def single_mat_vect_mult():
                 use_lock(C_D_non_imp_buffer_con_lock, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[5]:
+                s1 = dma_start(DMAChannelDir.S2MM, 1, dest=block[6], chain=block[8])
+            with block[6]:
+                use_lock(in_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(in_buffer[0], offset=0, len=buffer_size_of_in_ping_pong)
+                use_lock(in_buffer_con_lock, LockAction.Release, value=1)
+                next_bd(block[7])
+            with block[7]:
+                use_lock(in_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(in_buffer[1], offset=0, len=buffer_size_of_in_ping_pong)
+                use_lock(in_buffer_con_lock, LockAction.Release, value=1)
+                next_bd(block[6])
+            with block[8]: 
+                s2 = dma_start(DMAChannelDir.MM2S, 0, dest=block[9], chain=block[11])
+            with block[9]:
+                use_lock(out_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(out_buffer[0], offset=0, len= buffer_size_of_out_ping_pong)
+                use_lock(out_buffer_prod_lock, LockAction.Release, value=1)
+                next_bd(block[10])
+            with block[10]:
+                use_lock(out_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(out_buffer[1], offset=0, len = buffer_size_of_out_ping_pong)
+                use_lock(out_buffer_prod_lock, LockAction.Release, value=1)
+                next_bd(block[9])
+            with block[11]:
                 EndOp()
-                
                 
             # start_block=1
             # end_block =1+start_block
@@ -364,10 +382,25 @@ def single_mat_vect_mult():
             #         next_bd(block[next_index])
             # with block[end_block]:
             #     EndOp()
-        # @core(ComputeTile_0_2, "passThrough.o")
-        # def core_body():
-        #     for _ in range_(sys.maxsize):
-        #         pass
+        @core(ComputeTile_0_2, "passThrough.o")
+        def core_body():
+            for _ in range_(sys.maxsize):
+                use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
+                accum_float_value_func( in_buffer[0], out_buffer[0],
+                                       constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
+                                       )
+                use_lock(out_buffer_con_lock, LockAction.Release, value=1)
+                use_lock(in_buffer_prod_lock, LockAction.Release, value=1)
+                
+                use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
+                accum_float_value_func( in_buffer[1], out_buffer[1],
+                                       constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
+                                       )
+                use_lock(out_buffer_con_lock, LockAction.Release, value=1)
+                use_lock(in_buffer_prod_lock, LockAction.Release, value=1)                
+                
         @core(ComputeTile_1_2, "passThrough.o")
         def core_body():
           for _ in range_(sys.maxsize):
@@ -402,12 +435,34 @@ def single_mat_vect_mult():
             #     pass_through_func( switch_diode_buffer[k], switch_diode_buffer_debug_out[k], constant(buffer_size_of_each_switch_diode_matrix)    )
             # use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
             # use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
+            
+            
         matrix_size =buffer_size_of_switch_diode+buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non*2
 
         data_flow_out_size = buffer_size_of_out_ping_pong *4   # lest do 4 multple o f ping-pong size
         data_flow_in_size =  buffer_size_of_in_ping_pong*4
-        @runtime_sequence(np.ndarray[(matrix_size, ), dtype_in], np.ndarray[(matrix_size, ), dtype_out] )
-        def sequence(A,B):
+        
+        
+        
+        #TODO: need balance in port transfer in future
+        flow(ShimTile, WireBundle.DMA, 0, ComputeTile_0_2, WireBundle.DMA, 0)
+        flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
+        flow(ShimTile, WireBundle.DMA, 1, ComputeTile_0_2, WireBundle.DMA,1 )
+        flow(ComputeTile_0_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,1 )
+        
+        
+        memref.global_("B_CT_1_2_SHM", T.memref( matrix_size, T.f32() ), sym_visibility="public")
+        memref.global_("A_SHM_CT_0_2", T.memref( matrix_size, T.f32() ), sym_visibility="public")
+        memref.global_("out_CT_0_2_SHM", T.memref( data_flow_out_size, T.f32()), sym_visibility="public" )
+        memref.global_("in_SHM_CT_0_2", T.memref(data_flow_in_size, T.f32()), sym_visibility="public")
+        
+        shim_dma_allocation("B_CT_1_2_SHM", DMAChannelDir.S2MM, 0, 0)
+        shim_dma_allocation("A_SHM_CT_0_2", DMAChannelDir.MM2S, 0, 0)        
+        shim_dma_allocation("out_CT_0_2_SHM", DMAChannelDir.S2MM, 1,0)
+        shim_dma_allocation("in_SHM_CT_0_2", DMAChannelDir.MM2S, 1, 0 )
+        
+        @runtime_sequence(np.ndarray[(matrix_size, ), dtype_in], np.ndarray[(matrix_size, ), dtype_out], np.ndarray[(data_flow_in_size,), dtype_in], np.ndarray[(data_flow_out_size,), dtype_out]  )
+        def sequence(A,B, in_buf, out_buf):
             npu_dma_memcpy_nd(
                 metadata="A_SHM_CT_0_2",
                 bd_id=1,
@@ -417,7 +472,11 @@ def single_mat_vect_mult():
 
             npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1])
 
+            npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2", bd_id=2, mem=in_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_in_size], strides=[0,0,0,1])
+            npu_dma_memcpy_nd(metadata="out_CT_0_2_SHM", bd_id=3, mem=out_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_out_size], strides=[0,0,0,1])
+
             npu_dma_wait("B_CT_1_2_SHM")
+            npu_dma_wait("out_CT_0_2_SHM")
 with mlir_mod_ctx() as ctx:
     single_mat_vect_mult()
     res = ctx.module.operation.verify()

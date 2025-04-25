@@ -92,6 +92,10 @@ int main(int argc, const char *argv[]) {
     int A_B_buffer_size = 672;
     int C_D_matrix_size = 2*1568;
     int input_size = switch_diode_buffer_size  + A_B_buffer_size + C_D_matrix_size;
+    int inputPerIteration= 2;
+    int outputPerIteration = 14;
+    int iterationTimeStep = 364;
+    int number_of_iterationTimeStep = 4; 
     int Iterations = 3;
     // NPU instance
     npu_app npu_instance(1);
@@ -112,9 +116,13 @@ int main(int argc, const char *argv[]) {
     // npu_instance.interperate_bd(1);
 
     // compare the two sequences
+    int input_iteration_size = number_of_iterationTimeStep * iterationTimeStep * inputPerIteration;
+    int output_iteration_size = number_of_iterationTimeStep * iterationTimeStep * outputPerIteration;
     buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
     buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(input_size, 3, app_id_0);
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(input_size, 4, app_id_0);
+    buffer<dtype_in> in_0 = npu_instance.create_bo_buffer<dtype_in>( input_iteration_size, 5, app_id_0);
+    buffer<dtype_out> out_0 = npu_instance.create_bo_buffer<dtype_out>(output_iteration_size, 6, app_id_0);
 
 
 
@@ -123,15 +131,40 @@ int main(int argc, const char *argv[]) {
     std::mt19937                  gen(rd());
     std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);
     buffer<dtype_out> y_ref_0(input_size);    
+    buffer<dtype_out> out_ref_0(output_iteration_size);
     for (int i = 0; i < input_size; i++){
         w_0[i] = dist(gen);
         y_ref_0[i] = w_0[i];
     }
+    for(int i = 0; i < input_iteration_size; i++){
+        in_0[i] = dist(gen);
+    }
+
+    in_0[0] = 100;
+    in_0[1] = 1.2;
+    in_0[2] = 2.1;
+    in_0[3] = 0.9;
     w_0.sync_to_device();
+    in_0.sync_to_device();
+
+    // generate out_ref_0
+    int32_t in_offset = 0;
+    int32_t out_offset = 0; 
+    for(int i = 0; i < iterationTimeStep* number_of_iterationTimeStep; i++){
+        float acc = 0;
+        for(int k = 0; k < inputPerIteration;k ++){
+            acc += in_0[in_offset];
+            in_offset++;
+        }
+        for(int l = 0; l < outputPerIteration; l++ ){
+            out_ref_0[out_offset] = acc;
+            out_offset++;
+        }
+
+    }
 
 
-
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo());
+    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo() );
 
 	
     header_print("info", "Running runtime test.");
@@ -152,16 +185,28 @@ int main(int argc, const char *argv[]) {
     MSG_BONDLINE(40);
 
     y_0.sync_from_device();    
+    out_0.sync_from_device();
     header_print("info", "Finished running kernel");
 
     bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
-    for (size_t i = 0; i < y_0.size(); i++) {
+    // for (size_t i = 0; i < y_0.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << y_0[i]
+    //               << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+    //               << std::endl;
+    // }
+
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f  );
+
+    for (size_t i = 0; i < out_0.size()/100; i++) {
         std::cout << std::scientific      // Use exponential notation
                   << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_0[i]
-                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+                  << "y[" << i << "] = " << out_0[i]
+                  << " ?= y_ref[" << i << "] = " << out_ref_0[i]
                   << std::endl;
     }
+
     // // run with runlist
     // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
     // y_0.memset(0);
