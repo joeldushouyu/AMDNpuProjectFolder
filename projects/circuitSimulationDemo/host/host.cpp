@@ -87,7 +87,11 @@ int main(int argc, const char *argv[]) {
     // int W_VOLUME = M * K;
     // int X_VOLUME = 1 * K;
     
-    int input_size = 672;
+    
+    int switch_diode_buffer_size = 672;
+    int A_B_buffer_size = 672;
+    int C_D_matrix_size = 2*1568;
+    int input_size = switch_diode_buffer_size  + A_B_buffer_size + C_D_matrix_size;
     int Iterations = 3;
     // NPU instance
     npu_app npu_instance(1);

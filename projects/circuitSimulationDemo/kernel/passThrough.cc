@@ -32,7 +32,7 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
 }
 
 template<typename T>
-void passThrough_simple(T *restrict in, T*restrict out, const int32_t size){
+__attribute__((noinline)) void passThrough_simple(float *restrict in, float*restrict out, const int32_t size){
   
   event0();
 
@@ -40,6 +40,26 @@ void passThrough_simple(T *restrict in, T*restrict out, const int32_t size){
     *out = *in;
     out++;
     in++;
+  }
+  event1();
+}
+
+
+template<typename T>
+__attribute__((noinline)) void accumValue(float *restrict in, float*restrict out,
+  const int32_t in_to_out_ratio ,const int32_t  out_size  
+){
+  
+  event0();
+
+  for(int32_t j = 0; j < out_size; j++){
+    float acc_data = 0;
+    for(int32_t k = 0; k < in_to_out_ratio; k++){
+      acc_data += *in;
+      in++;
+    }
+    *out = acc_data;
+    out++;
   }
   event1();
 }
@@ -79,8 +99,24 @@ extern "C" {
 // }
 
 // #endif
-void passThroughLine_float(float_t *in, float_t *out, int32_t lineWidth) {
+void passThroughLine_float_0(float *in, float *out, int32_t lineWidth) {
   passThrough_simple<float>( in, out, lineWidth);
 }
+void passThroughLine_float_1(float *in, float *out, int32_t lineWidth) {
+  passThrough_simple<float>( in, out, lineWidth);
+}
+
+void passThroughLine_float_2(float *in, float *out, int32_t lineWidth) {
+  passThrough_simple<float>( in, out, lineWidth);
+}
+
+void passThroughLine_float_3(float *in, float *out, int32_t lineWidth) {
+  passThrough_simple<float>( in, out, lineWidth);
+}
+
+void accum_float_value(float *in, float *out, int32_t in_to_out_ratio, int32_t out_size){
+  accumValue<float>(in,out,in_to_out_ratio, out_size);
+}
+
 
 } // extern "C"

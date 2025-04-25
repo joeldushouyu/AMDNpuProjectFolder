@@ -5,7 +5,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
-
+import math
 
 import numpy as np
 import sys
@@ -29,15 +29,20 @@ from aie.dialects import memref
 from aie.dialects._aie_ops_gen import buffer as buffer_raw
 from aie.helpers.util import try_convert_np_type_to_mlir_type
 
-def round_to_nearest_multiple(n, multiple):
-  """Rounds an integer to the nearest multiple of a given number"""
-  if multiple == 0:
-      return n  # Avoid division by zero
-  return ((n + multiple - 1) // multiple) * multiple
+# def round_to_nearest_multiple(n, multiple):
+#   """Rounds an integer to the nearest multiple of a given number"""
+#   if multiple == 0:
+#       return n  # Avoid division by zero
+#   return ((n + multiple - 1) // multiple) * multiple
 
 
 
 
+def custom_floor(x, multiplier):
+  return math.floor(x / multiplier) * multiplier
+
+def custom_ceil(x, multiplier):
+  return math.ceil(x / multiplier) * multiplier
 
 
 
@@ -86,14 +91,14 @@ def single_mat_vect_mult():
         
         # Then use rest of buffer to store the U, and External switch 
         
-        _len_of_switch_size = (round_to_nearest_multiple(switch_size,32)//32 )   # number of 4byte(float) use for sending external switch for each iteration
+        _len_of_switch_size = (custom_ceil(switch_size,32)//32 )   # number of 4byte(float) use for sending external switch for each iteration
         len_of_input_for_each_iteration = u_size+ _len_of_switch_size
         
         # Tile declarations
         ShimTile = tile(0,0)
-        ComputeTile_0_2 = tile(0,2)        
+        # ComputeTile_0_2 = tile(0,2)        
         # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
-        # ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
+        ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
         ComputeTile_1_2 = tile(1,2)
         #TODO: profiling for if it makes a different of putting diode_matrix, A,B, C, D matrix together or not
         # allocate buffer for switch_diode_matrix
@@ -107,28 +112,30 @@ def single_mat_vect_mult():
         buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode + buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non +buffer_size_of_C_D_imp_non )
         # define a ping pong for it?
         
-        max_iteration_step = int(round_to_nearest_multiple( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) 
+        max_iteration_step = int(custom_floor( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) #TODO: round down instead?
         # print(max_iteration_step)
 
-        in_data_ty = np.ndarray[ (len_of_input_for_each_iteration*(max_iteration_step//2), ), dtype_in]
-        out_data_ty = np.ndarray[ (output_size*(max_iteration_step//2), ), dtype_out]
-        in_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=in_data_ty, name=f"in_buffer_{i}") for i in range(2)
-        ]
+        buffer_size_of_in_ping_pong = len_of_input_for_each_iteration*(max_iteration_step//2)
+        buffer_size_of_out_ping_pong = output_size*(max_iteration_step//2)
+        in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong, ), dtype_in]
+        out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong, ), dtype_out]
         # in_buffer = [
-        #   buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
-        #   buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
+        #     buffer(tile=ComputeTile_0_2, datatype=in_data_ty, name=f"in_buffer_{i}") for i in range(2)
         # ]
+        in_buffer = [
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", mem_bank = 0),
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{1}", mem_bank = 1)
+        ]
         in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=1)
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
-        out_buffer = [
-          buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-        ]
         # out_buffer = [
-        #     #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
-        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
-        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
-        # ]        
+        #   buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+        # ]
+        out_buffer = [
+            #buffer(tile=ComputeTile_0_2, datatype=out_data_ty, name=f"out_buffer_{i}") for i in range(2)
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", mem_bank = 2),
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{1}", mem_bank = 3)
+        ]        
         out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=1)
         out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
                 
@@ -145,15 +152,7 @@ def single_mat_vect_mult():
         switch_diode_con_lock = lock(ComputeTile_0_2, lock_id=1, init=0, sym_name="switch_diode_con_lock")
 
 
-        # Debug Buffer
-        switch_diode_buffer_debug_out = [
-          buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug") 
-        ]
-        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=1, sym_name="switch_diode_debug_prod_lock" )
-        switch_diode_debug_con_lock = lock(ComputeTile_1_2, lock_id=1, init=0, sym_name="switch_diode_debug_con_lock")
-
-
-        pass_through_func = external_func( "passThroughLine_float", inputs=[
+        pass_through_float_diode_matrix = external_func( "passThroughLine_float_0", inputs=[
           switch_diode_matrix_ty, switch_diode_matrix_ty, np.int32
         ] )
 
@@ -164,7 +163,11 @@ def single_mat_vect_mult():
         ]
         A_B_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=2, init=1)
         A_B_buffer_con_lock = lock(ComputeTile_0_2, lock_id=3, init=0)
-        
+
+        pass_through_float_A_B_matrix = external_func( "passThroughLine_float_1", inputs=[
+          A_B_matrix_ty, A_B_matrix_ty, np.int32
+        ] )
+
 
         C_D_matrix_ty = np.ndarray[ (buffer_size_of_C_D_imp_non,), dtype_in ]
         C_D_imp_buffer = [
@@ -172,6 +175,11 @@ def single_mat_vect_mult():
         ]
         C_D_imp_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=4, init=1)
         C_D_imp_buffer_con_lock = lock(ComputeTile_0_2, lock_id=5, init=0)
+
+        pass_through_float_C_D_matrix = external_func( "passThroughLine_float_2", inputs=[
+          C_D_matrix_ty, C_D_matrix_ty, np.int32
+        ] )
+        
         
         C_D_non_imp_buffer = [
             buffer(tile=ComputeTile_0_2, datatype=C_D_matrix_ty, name=f"C_D_non_imp_buffer") 
@@ -180,7 +188,32 @@ def single_mat_vect_mult():
         C_D_non_imp_buffer_con_lock = lock(ComputeTile_0_2, lock_id=7, init=0)
                 
 
+        # Debug Buffer
+        switch_diode_buffer_debug_out = [
+          buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug") 
+        ]
+        switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=1, sym_name="switch_diode_debug_prod_lock" )
+        switch_diode_debug_con_lock = lock(ComputeTile_1_2, lock_id=1, init=0, sym_name="switch_diode_debug_con_lock")
 
+        A_B_debug_buffer = [
+            buffer(tile=ComputeTile_1_2, datatype=A_B_matrix_ty, name="A_B_debug_Buffer")
+        ]
+        A_B_debug_buffer_prod_lock = lock(ComputeTile_1_2, lock_id=2, init=1)
+        A_B_debug_buffer_con_lock  = lock(ComputeTile_1_2, lock_id=3, init=0)
+        
+        C_D_debug_imp_buffer = [
+            buffer(tile=ComputeTile_1_2, datatype=C_D_matrix_ty, name="C_D_debug_imp_buffer")
+        ]
+        C_D_debug_imp_buffer_prod_lock = lock(ComputeTile_1_2, lock_id=4, init=1)
+        C_D_debug_imp_buffer_con_lock = lock(ComputeTile_1_2, lock_id=5, init=0)
+        
+        C_D_debug_non_imp_buffer = [
+            buffer(tile=ComputeTile_1_2, datatype=C_D_matrix_ty, name="C_D_debug_non_imp_buffer")
+        ]
+        C_D_debug_non_imp_buffer_prod_lock = lock(ComputeTile_1_2, lock_id=6, init=1)
+        C_D_debug_non_imp_buffer_con_lock = lock(ComputeTile_1_2, lock_id=7, init=0)
+        
+        
         
         """
         #TODO: later step
@@ -224,22 +257,46 @@ def single_mat_vect_mult():
         shim_dma_allocation("B_CT_1_2_SHM", DMAChannelDir.S2MM, 0, 0)
         shim_dma_allocation("A_SHM_CT_0_2", DMAChannelDir.MM2S, 0, 0)
         
-        #TODO: CT has 2 s2mm, so how do evenly divide it for transmitting those data?        
-
-      
-        # test_buffers = [ x for x in switch_diode_buffer] + [y for y in A_B_buffer]
+        #TODO: Balance workload for to port?
+        
         @mem(ComputeTile_0_2)
         def m(block):
           
+            # start_block=1
+            # end_block =total_switch_size+start_block
+            # s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])  
+            # with block[1]:
+            #     use_lock(switch_diode_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+            #     dma_bd(switch_diode_buffer[0], offset=0, len=buffer_size_of_switch_diode)
+            #     use_lock(switch_diode_con_lock, LockAction.Release, value=1)
+            #     next_bd(block[1])
+            # with block[2]:
+            #     EndOp()
+                
             start_block=1
             end_block =total_switch_size+start_block
-            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])  
+            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[5])  
             with block[1]:
                 use_lock(switch_diode_prod_lock, LockAction.AcquireGreaterEqual, value=1)
                 dma_bd(switch_diode_buffer[0], offset=0, len=buffer_size_of_switch_diode)
                 use_lock(switch_diode_con_lock, LockAction.Release, value=1)
-                next_bd(block[1])
+                next_bd(block[2])
             with block[2]:
+                use_lock(A_B_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)    
+                dma_bd(A_B_buffer[0], offset=0, len=buffer_size_of_A_B_matrix)
+                use_lock(A_B_buffer_con_lock, LockAction.Release, value=1)
+                next_bd(block[3])
+            with block[3]:
+                use_lock(C_D_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(C_D_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                use_lock(C_D_imp_buffer_con_lock, LockAction.Release, value=1)
+                next_bd(block[4])
+            with block[4]:
+                use_lock(C_D_non_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(C_D_non_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                use_lock(C_D_non_imp_buffer_con_lock, LockAction.Release, value=1)
+                next_bd(block[1])
+            with block[5]:
                 EndOp()
                 
                 
@@ -264,16 +321,35 @@ def single_mat_vect_mult():
         def m(block):
         #   start_block=1
         #   end_block = total_switch_size+start_block
-            s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[2])  
+            s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[5])  
 
             with block[1]:
                 use_lock(switch_diode_debug_con_lock, LockAction.AcquireGreaterEqual, value=1)
                 dma_bd(switch_diode_buffer_debug_out[0], offset=0, len=buffer_size_of_switch_diode)
                 use_lock(switch_diode_debug_prod_lock, LockAction.Release, value=1)
     
-                next_bd(block[1])
+                next_bd(block[2])
             with block[2]:
+                use_lock(A_B_debug_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(A_B_debug_buffer[0], offset=0, len=buffer_size_of_A_B_matrix)
+                use_lock(A_B_debug_buffer_prod_lock, LockAction.Release, value=1)
+                next_bd(block[3])
+            with block[3]:
+                use_lock(C_D_debug_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(C_D_debug_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                use_lock(C_D_debug_imp_buffer_prod_lock, LockAction.Release, value=1)
+                next_bd(block[4])
+            with block[4]:
+                use_lock(C_D_debug_non_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(C_D_debug_non_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                use_lock(C_D_debug_non_imp_buffer_prod_lock, LockAction.Release, value=1)
+                next_bd(block[1])
+            with block[5]:
                 EndOp()
+                
+                
+                
+            
             # start_block=1
             # end_block =1+start_block
             # s0 = dma_start(DMAChannelDir.MM2S, 0, dest=block[start_block], chain=block[end_block])  
@@ -288,16 +364,37 @@ def single_mat_vect_mult():
             #         next_bd(block[next_index])
             # with block[end_block]:
             #     EndOp()
-                
+        # @core(ComputeTile_0_2, "passThrough.o")
+        # def core_body():
+        #     for _ in range_(sys.maxsize):
+        #         pass
         @core(ComputeTile_1_2, "passThrough.o")
         def core_body():
           for _ in range_(sys.maxsize):
-            # for k in range(total_switch_size):
+
             use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
             use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
-            pass_through_func( switch_diode_buffer[0], switch_diode_buffer_debug_out[0], constant(buffer_size_of_switch_diode)    )
+            pass_through_float_diode_matrix( switch_diode_buffer[0], switch_diode_buffer_debug_out[0], constant(buffer_size_of_switch_diode)    )
             use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
             use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
+            
+            use_lock(A_B_debug_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+            use_lock(A_B_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+            pass_through_float_A_B_matrix( A_B_buffer[0], A_B_debug_buffer[0], constant(buffer_size_of_A_B_matrix ))
+            use_lock(A_B_buffer_prod_lock, LockAction.Release, value=1)
+            use_lock(A_B_debug_buffer_con_lock, LockAction.Release, value=1)
+            
+            use_lock(C_D_debug_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+            use_lock(C_D_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+            pass_through_float_C_D_matrix( C_D_imp_buffer[0], C_D_debug_imp_buffer[0], constant(buffer_size_of_C_D_imp_non) )
+            use_lock(C_D_imp_buffer_prod_lock, LockAction.Release, value=1)
+            use_lock(C_D_debug_imp_buffer_con_lock, LockAction.Release, value=1)
+            
+            use_lock(C_D_debug_non_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
+            use_lock(C_D_non_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
+            pass_through_float_C_D_matrix( C_D_non_imp_buffer[0], C_D_debug_non_imp_buffer[0], constant(buffer_size_of_C_D_imp_non))
+            use_lock(C_D_non_imp_buffer_prod_lock, LockAction.Release, value=1)
+            use_lock(C_D_debug_non_imp_buffer_con_lock, LockAction.Release, value=1)
             
             # use_lock(switch_diode_debug_prod_lock, LockAction.AcquireGreaterEqual, value=1)
             # use_lock(switch_diode_con_lock, LockAction.AcquireGreaterEqual, value=1)
@@ -305,17 +402,20 @@ def single_mat_vect_mult():
             #     pass_through_func( switch_diode_buffer[k], switch_diode_buffer_debug_out[k], constant(buffer_size_of_each_switch_diode_matrix)    )
             # use_lock(switch_diode_debug_con_lock, LockAction.Release, value=1)
             # use_lock(switch_diode_prod_lock, LockAction.Release, value=1)
-        input_size =buffer_size_of_switch_diode
-        @runtime_sequence(np.ndarray[(input_size, ), dtype_in], np.ndarray[(input_size, ), dtype_out]  )
+        matrix_size =buffer_size_of_switch_diode+buffer_size_of_A_B_matrix + buffer_size_of_C_D_imp_non*2
+
+        data_flow_out_size = buffer_size_of_out_ping_pong *4   # lest do 4 multple o f ping-pong size
+        data_flow_in_size =  buffer_size_of_in_ping_pong*4
+        @runtime_sequence(np.ndarray[(matrix_size, ), dtype_in], np.ndarray[(matrix_size, ), dtype_out] )
         def sequence(A,B):
             npu_dma_memcpy_nd(
                 metadata="A_SHM_CT_0_2",
                 bd_id=1,
-                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,input_size],
+                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,matrix_size],
                 strides=[0,0,0,1]
             )
 
-            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,input_size],strides=[0,0,0,1])
+            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1])
 
             npu_dma_wait("B_CT_1_2_SHM")
 with mlir_mod_ctx() as ctx:

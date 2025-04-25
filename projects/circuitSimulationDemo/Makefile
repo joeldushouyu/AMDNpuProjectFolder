@@ -11,7 +11,7 @@ TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/PROJECT/AMDNpuProject
 TemplaeHostDir := $(TemplateRepoDir)/host
 
 # create a dynamic link of /common folder, 
-
+# ENABLE_CHESSCC ?= 1
 
 DEVICE ?= npu2
 HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
