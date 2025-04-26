@@ -41,7 +41,7 @@ def with_block_unroll(block, chain):
                 use_lock(c_lock, LockAction.Release, value=1)
             next_bd(block[nxt_idx])
 
-def handle_dma_sequences(block, chain0, chain1, chain2):
+def handle_dma_sequences(block, chain0, chain1, chain2, chain0_start_end: tuple, chain1_start_end:tuple, chain2_start_end:tuple):
 
     # # block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx      
     # chain0 = [
@@ -50,15 +50,15 @@ def handle_dma_sequences(block, chain0, chain1, chain2):
     #     (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
     #     (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
     # ]
-    s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[5])
+    s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[chain0_start_end[0]], chain=block[chain0_start_end[1]])
     with_block_unroll(block=block, chain=chain0)
     
     # chain1 = [
     #     (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
     #     (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
     # ]
-    with block[5]:
-        s1 = dma_start(DMAChannelDir.S2MM, 1, dest=block[6], chain=block[8])
+    with block[chain0_start_end[1]]:
+        s1 = dma_start(DMAChannelDir.S2MM, 1, dest=block[chain1_start_end[0]], chain=block[chain1_start_end[1]])
     with_block_unroll(block=block, chain=chain1)
 
 
@@ -66,8 +66,8 @@ def handle_dma_sequences(block, chain0, chain1, chain2):
     #     (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
     #     (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
     # ]
-    with block[8]:
-        s2 = dma_start(DMAChannelDir.MM2S, 0, dest=block[9], chain=block[11])
+    with block[chain1_start_end[1]]:
+        s2 = dma_start(DMAChannelDir.MM2S, 0, dest=block[chain2_start_end[0]], chain=block[chain2_start_end[1]])
     with_block_unroll(block=block, chain=chain2)
-    with block[11]:
+    with block[chain2_start_end[1]]:
         EndOp()            

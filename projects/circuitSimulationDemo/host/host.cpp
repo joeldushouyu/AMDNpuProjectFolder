@@ -96,7 +96,10 @@ int main(int argc, const char *argv[]) {
     int outputPerIteration = 14;
     int iterationTimeStep = 364;
     int number_of_iterationTimeStep = 4; 
-    int Iterations = 3;
+    int Iterations = 1; // NOTE: only can run one time due to matrix balance transfer on s2mm
+                    // once transfer matrix, the s2mm-1 will never go back to transfer matrix mode
+    // can do multiple time if reload bitstream everytime
+    
     // NPU instance
     npu_app npu_instance(1);
     if (VERBOSE >= 1){
@@ -189,23 +192,27 @@ int main(int argc, const char *argv[]) {
     header_print("info", "Finished running kernel");
 
     bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
-    // for (size_t i = 0; i < y_0.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "y[" << i << "] = " << y_0[i]
-    //               << " ?= y_ref[" << i << "] = " << y_ref_0[i]
-    //               << std::endl;
-    // }
-
-    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f  );
-
-    for (size_t i = 0; i < out_0.size()/100; i++) {
+    for (size_t i = 0; i < y_0.size(); i++) {
         std::cout << std::scientific      // Use exponential notation
                   << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << out_0[i]
-                  << " ?= y_ref[" << i << "] = " << out_ref_0[i]
+                  << "y[" << i << "] = " << y_0[i]
+                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
                   << std::endl;
     }
+    if (pass ==false){
+        std::cout <<"Fail stage 1" << std::endl;
+    }
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f  );
+    if(pass==false){
+        std::cout << "FAil stage2" <<std::endl;
+    }
+    // for (size_t i = 0; i < out_0.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << out_0[i]
+    //               << " ?= y_ref[" << i << "] = " << out_ref_0[i]
+    //               << std::endl;
+    // }
 
     // // run with runlist
     // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);

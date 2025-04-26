@@ -43,7 +43,7 @@ def balance_matrix_transfer_case(switch_diode_matrix_size, A_B_matrix_size, C_D_
     
     # possible only two case
     if(mid_point > switch_diode_matrix_size and mid_point < (switch_diode_matrix_size+A_B_matrix_size)):
-        return 1, mid_point-switch_diode_matrix_size  # case 1
+        return 1, mid_point-switch_diode_matrix_size  # midpoint in A_B_matrix
     elif(mid_point   >  (switch_diode_matrix_size+A_B_matrix_size) and mid_point < (switch_diode_matrix_size+A_B_matrix_size+C_D_imp_matrix_size)):
         return 2, mid_point-switch_diode_matrix_size-A_B_matrix_size
     else:
@@ -138,8 +138,8 @@ def single_mat_vect_mult():
           buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", address=1024), # 1024 offset, reserve for stack
 
         ]
-        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2)
-        in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0)
+        in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2, sym_name="in_buffer_p_lock")
+        in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0, sym_name="in_buffer_c_lock")
         
         out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4)
         out_buffer = [
@@ -264,78 +264,87 @@ def single_mat_vect_mult():
 
         
         # strategy to balance out the S2MM workload on two port of CT_0_2
-        S2MM_stratgey, offset = balance_matrix_transfer_case(buffer_size_of_switch_diode, buffer_size_of_A_B_matrix,
-                                                     buffer_size_of_C_D_imp_non, buffer_size_of_C_D_imp_non)
-        """
-        @mem(ComputeTile_0_2)
-        def m(block):
-            s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[5])  
-            with block[1]:
-                use_lock(switch_diode_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(switch_diode_buffer[0], offset=0, len=buffer_size_of_switch_diode)
-                use_lock(switch_diode_con_lock, LockAction.Release, value=1)
-                next_bd(block[2])
-            with block[2]:
-                use_lock(A_B_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)    
-                dma_bd(A_B_buffer[0], offset=0, len=buffer_size_of_A_B_matrix)
-                use_lock(A_B_buffer_con_lock, LockAction.Release, value=1)
-                next_bd(block[3])
-            with block[3]:
-                use_lock(C_D_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(C_D_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
-                use_lock(C_D_imp_buffer_con_lock, LockAction.Release, value=1)
-                next_bd(block[4])
-            with block[4]:
-                use_lock(C_D_non_imp_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(C_D_non_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
-                use_lock(C_D_non_imp_buffer_con_lock, LockAction.Release, value=1)
-                next_bd(block[1])
-            with block[5]:
-                s1 = dma_start(DMAChannelDir.S2MM, 1, dest=block[6], chain=block[8])
-            with block[6]:
-                use_lock(in_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(in_buffer[0], offset=0, len=buffer_size_of_in_ping_pong)
-                use_lock(in_buffer_con_lock, LockAction.Release, value=1)
-                next_bd(block[7])
-            with block[7]:
-                use_lock(in_buffer_prod_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(in_buffer[0], offset=buffer_size_of_in_ping_pong, len=buffer_size_of_in_ping_pong)
-                use_lock(in_buffer_con_lock, LockAction.Release, value=1)
-                next_bd(block[6])
-            with block[8]: 
-                s2 = dma_start(DMAChannelDir.MM2S, 0, dest=block[9], chain=block[11])
-            with block[9]:
-                use_lock(out_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(out_buffer[0], offset=0, len= buffer_size_of_out_ping_pong)
-                use_lock(out_buffer_prod_lock, LockAction.Release, value=1)
-                next_bd(block[10])
-            with block[10]:
-                use_lock(out_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(out_buffer[0], offset=buffer_size_of_out_ping_pong, len = buffer_size_of_out_ping_pong)
-                use_lock(out_buffer_prod_lock, LockAction.Release, value=1)
-                next_bd(block[9])
-            with block[11]:
-                EndOp()
-        """
+        # S2MM_stratgey, offset = balance_matrix_transfer_case(buffer_size_of_switch_diode, buffer_size_of_A_B_matrix,
+        #                                              buffer_size_of_C_D_imp_non, buffer_size_of_C_D_imp_non)
+        S2MM_stratgey = 2
 
         @mem(ComputeTile_0_2)
         def m(block):
-            # block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx 
-            chain0 = [
-                (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
-                (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
-                (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
-                (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
-            ]
-            chain1 = [
-                (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
-                (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
-            ]
-            chain2 = [
-                (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
-                (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
-            ]  
-            handle_dma_sequences(block, chain0=chain0, chain1=chain1, chain2=chain2) 
+            #block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx 
+            #Does not consider any workload balance case
+            # chain0 = [
+            #     (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
+            #     (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
+            #     (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
+            #     (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
+            # ]
+            # chain0_s_e = (1, 1+len(chain0))
+            # chain1 = [
+            #     (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
+            #     (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
+            # ]
+            # chain1_s_e = (6,6+len(chain1))
+            
+            if S2MM_stratgey == 1:
+                # DIVISION point at  A_B_ buffer
+                chain0 = [
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 1   ),
+                ]
+                chain0_s_e = (1, 1+len(chain0))
+                chain1 = [
+                    (4, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock],5 ),
+                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6),
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock],7 ),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock],6 ), # becase matrix only transfer once
+                ]
+                chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
+                chain2 = [
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
+                ]  
+                chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))     
+            elif S2MM_stratgey == 2:
+                # during middle of C_D_impulse
+                chain0 = [
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
+                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 1 ),
+                ]
+                chain0_s_e = (1, 1+len(chain0))
+                chain1 = [
+                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6 ),
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6) # because C_D_non one transfer once
+                ]
+                chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
+                chain2 = [
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 9),
+                ]  
+                chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))                      
+            else :
+                #Does not consider any workload balance case
+                chain0 = [
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
+                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
+                    (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
+                ]
+                chain0_s_e = (1, 1+len(chain0))
+                chain1 = [
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
+                ]
+                chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
+                chain2 = [
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
+                ]  
+                chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))                
+            
+
+            handle_dma_sequences(block, chain0=chain0, chain1=chain1, chain2=chain2, chain0_start_end=chain0_s_e, chain1_start_end=chain1_s_e, chain2_start_end=chain2_s_e) 
                 
         @mem(ComputeTile_1_2)
         def m(block):
@@ -425,39 +434,49 @@ def single_mat_vect_mult():
         data_flow_out_size = buffer_size_of_out_ping_pong *4   # lest do 4 multple o f ping-pong size
         data_flow_in_size =  buffer_size_of_in_ping_pong*4
         
-        
-        
+        if S2MM_stratgey == 2:
+            in_0_size = buffer_size_of_switch_diode + buffer_size_of_A_B_matrix +buffer_size_of_C_D_imp_non
+            in_1_size =  buffer_size_of_C_D_imp_non + data_flow_in_size
+        elif S2MM_stratgey == 1:
+            in_0_size = buffer_size_of_switch_diode+ buffer_size_of_A_B_matrix
+            in_1_size = 2*buffer_size_of_C_D_imp_non + data_flow_in_size
+        else:
+            in_0_size = matrix_size
+            in_1_size = data_flow_in_size
         #TODO: need balance in port transfer in future
         flow(ShimTile, WireBundle.DMA, 0, ComputeTile_0_2, WireBundle.DMA, 0)
         flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
         flow(ShimTile, WireBundle.DMA, 1, ComputeTile_0_2, WireBundle.DMA,1 )
         flow(ComputeTile_0_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,1 )
         
-        
-        memref.global_("B_CT_1_2_SHM", T.memref( matrix_size, T.f32() ), sym_visibility="public")
-        memref.global_("A_SHM_CT_0_2", T.memref( matrix_size, T.f32() ), sym_visibility="public")
-        memref.global_("out_CT_0_2_SHM", T.memref( data_flow_out_size, T.f32()), sym_visibility="public" )
-        memref.global_("in_SHM_CT_0_2", T.memref(data_flow_in_size, T.f32()), sym_visibility="public")
-        
+
+        memref.global_("in_SHM_CT_0_2_0", T.memref( in_0_size, T.f32() ), sym_visibility="public")            
+        memref.global_("in_SHM_CT_0_2_1", T.memref(in_1_size, T.f32()), sym_visibility="public")
+        memref.global_("B_CT_1_2_SHM", T.memref( matrix_size, T.f32() ), sym_visibility="public") #DEBUG out
+        memref.global_("out_CT_0_2_SHM", T.memref( data_flow_out_size, T.f32()), sym_visibility="public" ) # result out
+
+            
         shim_dma_allocation("B_CT_1_2_SHM", DMAChannelDir.S2MM, 0, 0)
-        shim_dma_allocation("A_SHM_CT_0_2", DMAChannelDir.MM2S, 0, 0)        
+        shim_dma_allocation("in_SHM_CT_0_2_0", DMAChannelDir.MM2S, 0, 0)        
         shim_dma_allocation("out_CT_0_2_SHM", DMAChannelDir.S2MM, 1,0)
-        shim_dma_allocation("in_SHM_CT_0_2", DMAChannelDir.MM2S, 1, 0 )
-        
+        shim_dma_allocation("in_SHM_CT_0_2_1", DMAChannelDir.MM2S, 1, 0 )
+
         @runtime_sequence(np.ndarray[(matrix_size, ), dtype_in], np.ndarray[(matrix_size, ), dtype_out], np.ndarray[(data_flow_in_size,), dtype_in], np.ndarray[(data_flow_out_size,), dtype_out]  )
         def sequence(A,B, in_buf, out_buf):
+            # work balance module
+            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1])
+            
             npu_dma_memcpy_nd(
-                metadata="A_SHM_CT_0_2",
+                metadata="in_SHM_CT_0_2_0",
                 bd_id=1,
-                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,matrix_size],
+                mem=A, offsets=[0,0,0,0], sizes= [1,1,1,in_0_size],
                 strides=[0,0,0,1]
             )
+            if (in_1_size-data_flow_in_size > 0):
+                npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=2, mem=A, offsets=[0,0,0, in_0_size], sizes=[1,1,1, in_1_size-data_flow_in_size], strides=[0,0,0,1])
 
-            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1])
-
-            npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2", bd_id=2, mem=in_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_in_size], strides=[0,0,0,1])
-            npu_dma_memcpy_nd(metadata="out_CT_0_2_SHM", bd_id=3, mem=out_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_out_size], strides=[0,0,0,1])
-
+            npu_dma_memcpy_nd(metadata="out_CT_0_2_SHM", bd_id=4, mem=out_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_out_size], strides=[0,0,0,1])
+            npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=5, mem=in_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_in_size ], strides=[0,0,0,1])
             npu_dma_wait("B_CT_1_2_SHM")
             npu_dma_wait("out_CT_0_2_SHM")
 with mlir_mod_ctx() as ctx:
