@@ -239,63 +239,14 @@ def single_mat_vect_mult():
         
         
         
-        """
-        #TODO: later step
-        # packetflow(
-        #     pkt_id=0x0,
-        #     source=ShimTile,
-        #     source_port=WireBundle.DMA,
-        #     source_channel=0,
-        #     dest=ComputeTile_0_2,
-        #     dest_port=WireBundle.DMA,
-        #     dest_channel=0,
-        #     #keep_pkt_header=True,
-        # )
-        # packetflow(
-        #   pkt_id=0x1,
-        #   source=ShimTile,
-        #   source_port=WireBundle.DMA,
-        #   source_channel=1,
-        #   dest=ComputeTile_0_2,
-        #   dest_port=WireBundle.DMA,
-        #   dest_channel=1
-        # )
-        # # Debug result
-        # packetflow(
-        #   pkt_id=0x2,
-        #   source = ComputeTile_1_2,
-        #   source_port=WireBundle.DMA,
-        #   source_channel = 0,
-        #   dest = ShimTile,
-        #   dest_port= WireBundle.DMA,
-        #   dest_channel=0
-          
-        # )
-        """
-
-        
-        # strategy to balance out the S2MM workload on two port of CT_0_2
-        # S2MM_stratgey, offset = balance_matrix_transfer_case(buffer_size_of_switch_diode, buffer_size_of_A_B_matrix,
-        #                                              buffer_size_of_C_D_imp_non, buffer_size_of_C_D_imp_non)
-        S2MM_stratgey = 2
+        strategy to balance out the S2MM workload on two port of CT_0_2
+        S2MM_stratgey, offset = balance_matrix_transfer_case(buffer_size_of_switch_diode, buffer_size_of_A_B_matrix,
+                                                     buffer_size_of_C_D_imp_non, buffer_size_of_C_D_imp_non)
+        # S2MM_stratgey = 2
 
         @mem(ComputeTile_0_2)
         def m(block):
-            #block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx 
-            #Does not consider any workload balance case
-            # chain0 = [
-            #     (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
-            #     (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
-            #     (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
-            #     (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
-            # ]
-            # chain0_s_e = (1, 1+len(chain0))
-            # chain1 = [
-            #     (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
-            #     (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
-            # ]
-            # chain1_s_e = (6,6+len(chain1))
-            
+
             if S2MM_stratgey == 1:
                 # DIVISION point at  A_B_ buffer
                 #block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx, [packet_id, packet_type]                 
