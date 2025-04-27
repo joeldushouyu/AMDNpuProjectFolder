@@ -25,12 +25,20 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 
 from aie.dialects import memref
-#given a 512x512 matrix size and 512x`1 vector
+
 from aie.dialects._aie_ops_gen import buffer as buffer_raw
 from aie.helpers.util import try_convert_np_type_to_mlir_type
+import numpy as np
+import sys
+import aie.utils.trace as trace_utils
+from aie.utils.trace import PortEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from enum import IntEnum
 
-
+from custom_npu_dma_memcpy import NpuDmaMemcpyNd as custom_npu_dma_memcpy_nd
+from aie.dialects.aiex import control_packet
 from CT_0_2_helper import *
+from custom_npu_dma_memcpy import generate_packet_attribute
 # def round_to_nearest_multiple(n, multiple):
 #   """Rounds an integer to the nearest multiple of a given number"""
 #   if multiple == 0:
@@ -38,6 +46,7 @@ from CT_0_2_helper import *
 #   return ((n + multiple - 1) // multiple) * multiple
 
 
+# npu_dma_memcpy_nd
 def balance_matrix_transfer_case(switch_diode_matrix_size, A_B_matrix_size, C_D_imp_matrix_size, C_D_non_imp_matrix_size):
     mid_point = (switch_diode_matrix_size+ A_B_matrix_size+ C_D_imp_matrix_size+C_D_non_imp_matrix_size)//2
     
@@ -72,6 +81,7 @@ def single_mat_vect_mult():
     @device(AIEDevice.npu2)
     def device_body():
         #TODO: pass as parameters
+        trace_size = 2048 #TODO:
         simulate_end_time = 4e-3
         simulate_frequency = (100e3)*20
         switch_size = 2
@@ -107,7 +117,8 @@ def single_mat_vect_mult():
         len_of_input_for_each_iteration = u_size+ _len_of_switch_size
         
         # Tile declarations
-        ShimTile = tile(0,0)
+        ShimTile_0 = tile(0,0)
+        ShimTile_1 = tile(1, 0)
         # ComputeTile_0_2 = tile(0,2)        
         # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
         ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
@@ -287,59 +298,60 @@ def single_mat_vect_mult():
             
             if S2MM_stratgey == 1:
                 # DIVISION point at  A_B_ buffer
+                #block_idx, acqire_locks, buffer, buffer_offset, buffer_len, release_locks, next_idx, [packet_id, packet_type]                 
                 chain0 = [
-                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
-                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 1   ),
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2, [] ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 1, []   ),
                 ]
                 chain0_s_e = (1, 1+len(chain0))
                 chain1 = [
-                    (4, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock],5 ),
-                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6),
-                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock],7 ),
-                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock],6 ), # becase matrix only transfer once
+                    (4, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock],5, [] ),
+                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6, []),
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock],7, [] ),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock],6, [] ), # becase matrix only transfer once
                 ]
                 chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
                 chain2 = [
-                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
-                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10, [9,0]),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9, [9,0]),
                 ]  
                 chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))     
             elif S2MM_stratgey == 2:
                 # during middle of C_D_impulse
                 chain0 = [
-                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
-                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
-                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 1 ),
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2, [] ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3, []   ),
+                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 1, [] ),
                 ]
                 chain0_s_e = (1, 1+len(chain0))
                 chain1 = [
-                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6 ),
-                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
-                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6) # because C_D_non one transfer once
+                    (5, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 6, [] ),
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7, []),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6, []) # because C_D_non one transfer once
                 ]
                 chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
                 chain2 = [
-                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
-                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 9),
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10, [9,0]),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 9, [9,0]),
                 ]  
                 chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))                      
             else :
                 #Does not consider any workload balance case
                 chain0 = [
-                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2 ),
-                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3   ),
-                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4  ),
-                    (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1 )
+                    (1, [switch_diode_prod_lock], switch_diode_buffer[0], 0, buffer_size_of_switch_diode, [switch_diode_con_lock], 2, [] ),
+                    (2, [A_B_buffer_prod_lock],   A_B_buffer[0], 0, buffer_size_of_A_B_matrix, [A_B_buffer_con_lock], 3, []   ),
+                    (3, [C_D_imp_buffer_prod_lock], C_D_imp_buffer[0], 0, buffer_size_of_C_D_imp_non, [C_D_imp_buffer_con_lock], 4, []  ),
+                    (4, [C_D_non_imp_buffer_prod_lock], C_D_non_imp_buffer[0], 0, buffer_size_of_C_D_imp_non,  [C_D_non_imp_buffer_con_lock], 1, [] )
                 ]
                 chain0_s_e = (1, 1+len(chain0))
                 chain1 = [
-                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7),
-                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6),
+                    (6, [in_buffer_prod_lock],  in_buffer[0],   0,                          buffer_size_of_in_ping_pong, [in_buffer_con_lock], 7, []),
+                    (7, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock], 6, []),
                 ]
                 chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
                 chain2 = [
-                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10),
-                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9),
+                    (9,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 10, [9,0]),
+                    (10, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  9, [9,0]),
                 ]  
                 chain2_s_e = (chain1_s_e[1]+1, chain1_s_e[1]+1+len(chain2))                
             
@@ -354,23 +366,26 @@ def single_mat_vect_mult():
 
             with block[1]:
                 use_lock(switch_diode_debug_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(switch_diode_buffer_debug_out[0], offset=0, len=buffer_size_of_switch_diode)
+                dma_bd(switch_diode_buffer_debug_out[0], offset=0, len=buffer_size_of_switch_diode, packet=generate_packet_attribute(packet_id=7, packet_type=0))
                 use_lock(switch_diode_debug_prod_lock, LockAction.Release, value=1)
     
                 next_bd(block[2])
             with block[2]:
                 use_lock(A_B_debug_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(A_B_debug_buffer[0], offset=0, len=buffer_size_of_A_B_matrix)
+                # dma_bd_packet(packet_id=1, packet_type=0)                
+                dma_bd(A_B_debug_buffer[0], offset=0, len=buffer_size_of_A_B_matrix, packet=generate_packet_attribute(packet_id=7, packet_type=0))
                 use_lock(A_B_debug_buffer_prod_lock, LockAction.Release, value=1)
                 next_bd(block[3])
             with block[3]:
                 use_lock(C_D_debug_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(C_D_debug_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                # dma_bd_packet(packet_id=1, packet_type=0)                
+                dma_bd(C_D_debug_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non, packet=generate_packet_attribute(packet_id=7, packet_type=0))
                 use_lock(C_D_debug_imp_buffer_prod_lock, LockAction.Release, value=1)
                 next_bd(block[4])
             with block[4]:
                 use_lock(C_D_debug_non_imp_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                dma_bd(C_D_debug_non_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non)
+                # dma_bd_packet(packet_id=1, packet_type=0)                
+                dma_bd(C_D_debug_non_imp_buffer[0], offset=0, len=buffer_size_of_C_D_imp_non, packet=generate_packet_attribute(packet_id=7, packet_type=0))
                 use_lock(C_D_debug_non_imp_buffer_prod_lock, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[5]:
@@ -443,13 +458,31 @@ def single_mat_vect_mult():
         else:
             in_0_size = matrix_size
             in_1_size = data_flow_in_size
-        #TODO: need balance in port transfer in future
-        flow(ShimTile, WireBundle.DMA, 0, ComputeTile_0_2, WireBundle.DMA, 0)
-        flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
-        flow(ShimTile, WireBundle.DMA, 1, ComputeTile_0_2, WireBundle.DMA,1 )
-        flow(ComputeTile_0_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,1 )
+            
+        if(trace_size > 0):
+            tiles_to_trace = [ComputeTile_0_2, ComputeTile_1_2] #TODO: also shimtile?
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile_1)
+            
+        #flow(ShimTile, WireBundle.DMA, 0, ComputeTile_0_2, WireBundle.DMA, 0)
+        #flow(ComputeTile_1_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,0)
+        #flow(ShimTile, WireBundle.DMA, 1, ComputeTile_0_2, WireBundle.DMA,1 )
+        # flow(ComputeTile_0_2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA,1 )
         
-
+        # Change to packet flow
+        # leave first 6(0-5) packet id for tracing
+        packetflow( 6, source=ShimTile_0, source_port=WireBundle.DMA, source_channel=0, 
+                   dest = ComputeTile_0_2, dest_port=WireBundle.DMA, dest_channel=0
+                   )
+        packetflow(7, source=ComputeTile_1_2, source_port=WireBundle.DMA, source_channel=0,
+                   dest = ShimTile_0, dest_port=WireBundle.DMA, dest_channel=0
+                   )
+        packetflow(8, source=ShimTile_0, source_port=WireBundle.DMA, source_channel=1,
+                   dest=ComputeTile_0_2, dest_port=WireBundle.DMA, dest_channel=1
+                   )
+        packetflow(9, source=ComputeTile_0_2, source_port=WireBundle.DMA, source_channel=0,
+                    dest = ShimTile_0, dest_port= WireBundle.DMA, dest_channel=1
+                   )
+        
         memref.global_("in_SHM_CT_0_2_0", T.memref( in_0_size, T.f32() ), sym_visibility="public")            
         memref.global_("in_SHM_CT_0_2_1", T.memref(in_1_size, T.f32()), sym_visibility="public")
         memref.global_("B_CT_1_2_SHM", T.memref( matrix_size, T.f32() ), sym_visibility="public") #DEBUG out
@@ -464,21 +497,38 @@ def single_mat_vect_mult():
         @runtime_sequence(np.ndarray[(matrix_size, ), dtype_in], np.ndarray[(matrix_size, ), dtype_out], np.ndarray[(data_flow_in_size,), dtype_in], np.ndarray[(data_flow_out_size,), dtype_out]  )
         def sequence(A,B, in_buf, out_buf):
             # work balance module
-            npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1])
+            custom_npu_dma_memcpy_nd(metadata="B_CT_1_2_SHM", bd_id=0, mem=B, offsets=[0,0,0,0],sizes= [1,1,1,matrix_size],strides=[0,0,0,1], issue_token=True)
             
-            npu_dma_memcpy_nd(
+            custom_npu_dma_memcpy_nd(
                 metadata="in_SHM_CT_0_2_0",
                 bd_id=1,
                 mem=A, offsets=[0,0,0,0], sizes= [1,1,1,in_0_size],
-                strides=[0,0,0,1]
+                strides=[0,0,0,1],
+                packet_id=6,
+                packet_type=0
             )
+            
+            
             if (in_1_size-data_flow_in_size > 0):
-                npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=2, mem=A, offsets=[0,0,0, in_0_size], sizes=[1,1,1, in_1_size-data_flow_in_size], strides=[0,0,0,1])
+                custom_npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=2, mem=A, offsets=[0,0,0, in_0_size], 
+                                         sizes=[1,1,1, in_1_size-data_flow_in_size], strides=[0,0,0,1],  packet_id=8, packet_type=0)
 
-            npu_dma_memcpy_nd(metadata="out_CT_0_2_SHM", bd_id=4, mem=out_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_out_size], strides=[0,0,0,1])
-            npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=5, mem=in_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_in_size ], strides=[0,0,0,1])
+            custom_npu_dma_memcpy_nd(metadata="out_CT_0_2_SHM", bd_id=4, mem=out_buf, offsets=[0,0,0,0], sizes=[1,1,1, data_flow_out_size], 
+                                     strides=[0,0,0,1], issue_token=True)
+            custom_npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=5, mem=in_buf, offsets=[0,0,0,0], 
+                                     sizes=[1,1,1, data_flow_in_size ], strides=[0,0,0,1], packet_id=8, packet_type=0)
+            # npu_dma_wait("B_CT_1_2_SHM")
+            # npu_dma_wait("out_CT_0_2_SHM")
+            if(trace_size > 0):
+                trace_utils.configure_packet_tracing_aie2(
+                    tiles_to_trace=tiles_to_trace,
+                    ddr_id=4,   # last in/out parameter(not just need to pass in host, did not define in sequence)
+                    shim =ShimTile_1,
+                    trace_size=trace_size, # beacuse have 2 tile to,
+                )
             npu_dma_wait("B_CT_1_2_SHM")
             npu_dma_wait("out_CT_0_2_SHM")
+
 with mlir_mod_ctx() as ctx:
     single_mat_vect_mult()
     res = ctx.module.operation.verify()

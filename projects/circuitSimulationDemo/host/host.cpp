@@ -72,9 +72,9 @@ int main(int argc, const char *argv[]) {
     arg_utils::add_default_options(desc);
 
     // Add custom options
-    desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
-    desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
-    desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
+    // desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
+    // desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
+    // desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
 
     arg_utils::parse_options(argc, argv, desc, vm);
     
@@ -99,7 +99,7 @@ int main(int argc, const char *argv[]) {
     int Iterations = 1; // NOTE: only can run one time due to matrix balance transfer on s2mm
                     // once transfer matrix, the s2mm-1 will never go back to transfer matrix mode
     // can do multiple time if reload bitstream everytime
-    
+    int trace_size = 2048; //TODO:
     // NPU instance
     npu_app npu_instance(1);
     if (VERBOSE >= 1){
@@ -127,6 +127,8 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_in> in_0 = npu_instance.create_bo_buffer<dtype_in>( input_iteration_size, 5, app_id_0);
     buffer<dtype_out> out_0 = npu_instance.create_bo_buffer<dtype_out>(output_iteration_size, 6, app_id_0);
 
+    int tmp_trace_size = (trace_size > 0) ? trace_size :1;
+    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size,7, app_id_0 );
 
 
     // random float, not in in this case
@@ -149,7 +151,11 @@ int main(int argc, const char *argv[]) {
     in_0[3] = 0.9;
     w_0.sync_to_device();
     in_0.sync_to_device();
-
+    char *bufTrace = trace_res.data();
+    if(trace_size>0){
+        memset(bufTrace, 0, trace_size);
+        trace_res.sync_to_device();
+    }
     // generate out_ref_0
     int32_t in_offset = 0;
     int32_t out_offset = 0; 
@@ -167,7 +173,7 @@ int main(int argc, const char *argv[]) {
     }
 
 
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo() );
+    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
 
 	
     header_print("info", "Running runtime test.");
@@ -189,16 +195,22 @@ int main(int argc, const char *argv[]) {
 
     y_0.sync_from_device();    
     out_0.sync_from_device();
+    if(trace_size > 0){
+        trace_res.sync_from_device();
+        npu_instance.write_out_trace(((char *)bufTrace), trace_size,
+        "trace.txt");
+    }
+
     header_print("info", "Finished running kernel");
 
     bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
-    for (size_t i = 0; i < y_0.size(); i++) {
-        std::cout << std::scientific      // Use exponential notation
-                  << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_0[i]
-                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
-                  << std::endl;
-    }
+    // for (size_t i = 0; i < y_0.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << y_0[i]
+    //               << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+    //               << std::endl;
+    // }
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
     }
