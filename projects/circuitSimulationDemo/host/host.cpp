@@ -99,7 +99,7 @@ int main(int argc, const char *argv[]) {
     int Iterations = 1; // NOTE: only can run one time due to matrix balance transfer on s2mm
                     // once transfer matrix, the s2mm-1 will never go back to transfer matrix mode
     // can do multiple time if reload bitstream everytime
-    int trace_size = 2048; //TODO:
+    int trace_size = 0; //TODO:
     // NPU instance
     npu_app npu_instance(1);
     if (VERBOSE >= 1){
