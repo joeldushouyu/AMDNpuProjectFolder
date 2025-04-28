@@ -66,6 +66,7 @@ override HOST_SRCS := $(HOST_SRCS) $(EXTRA_SRCS)
 $(info HOST_HEADERS (after EXTRA) = $(HOST_HEADERS))
 $(info HOST_SRCS (after EXTRA) = $(HOST_SRCS))
 CXXFLAGS += -I$(TemplaeHostDir)
+CXXFLAGS += -I$(TemplateRepoDir)/common
 include $(TemplateRepoDir)/makefiles/host.mk
 .PHONY: run all kernel link bitstream host clean instructions route
 all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
@@ -122,4 +123,4 @@ route: ${IRON_BOTH_MLIR_TARGET}
 
 trace: trace.txt
 	${MlirDIR}/programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/mlir/mv.mlir --colshift 0 > circutSimulation.json
-	${MlirDIR}/programming_examples/utils/get_trace_summary.py --filename circutSimulation.json	
+	${MlirDIR}/programming_examples/utils/get_trace_summary.py --filename circutSimulation.json
