@@ -77,7 +77,7 @@ TARGET_HOST_TEST = test_host
 SRC_TEST = test.cpp
 
 .PHONY: run all kernel link bitstream host clean instructions route
-all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
+all: config_stage ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 
 clean:
 	-@rm -rf build 
@@ -87,13 +87,21 @@ clean:
 	-@rm -rf route.json
 	-@rm -rf generated.txt
 	-@rm -rf route*.txt
+	rm -f $(TARGET_HOST_TEST)
+	rm  final_config.json
+	rm ./iron/final_config.json
+	rm ./host/final_config.json
 
 test:
 	echo "test"
 	echo ${AIEOPT_DIR}
 
+config_stage:
+	python generate_config.py 
+	cp final_config.json  ./iron/
+	cp final_config.json  ./host/
 
-kernel: ${KERNEL_OBJS}
+kernel: ${KERNEL_OBJS} 
 
 
 instructions: ${INSTS_TARGETS}
@@ -102,17 +110,16 @@ instructions: ${INSTS_TARGETS}
 link: ${MLIR_TARGET} 
 
 
-bitstream: ${XCLBIN_TARGETS}
+bitstream: ${XCLBIN_TARGETS} config_stage
 
 ${TARGET_HOST_TEST}:${SRC_TEST}
 	$(CXX_HOST_TEST) $(CXXFLAGS_HOST_TEST) -o $(TARGET_HOST_TEST) $(SRC_TEST)
 
-host: ${HOST_C_TARGET}
+host: ${HOST_C_TARGET} 
 
 
 clean_host:
 	-@rm -rf build/host
-	rm -f $(TARGET_HOST_TEST)
 
 run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
 	./${HOST_C_TARGET} | tee out.log
