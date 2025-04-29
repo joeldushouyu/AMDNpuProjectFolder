@@ -31,15 +31,19 @@ bool are_results_close(
     buffer<float>& y_cpu,
     buffer<float>& y_npu,
     float rtol = 1e-5f,  // Relative tolerance (1e-5 = 0.001%)
-    float atol = 1e-6f   // Absolute tolerance (1e-6 = 0.0001%)
+    float atol = 1e-6f,   // Absolute tolerance (1e-6 = 0.0001%),
+    uint32_t size_to_check = 0
 ) {
     // First check vector sizes match
     if (y_cpu.size() != y_npu.size()) {
         return false;
     }
+    if(size_to_check == 0){
+        size_to_check =  y_cpu.size();
+    }
 
     // Component-wise comparison
-    for (size_t i = 0; i < y_cpu.size(); ++i) {
+    for (size_t i = 0; i < size_to_check; ++i) {
         const float a = y_cpu[i];
         const float b = y_npu[i];
         const float abs_diff = std::fabs(a - b);
@@ -49,6 +53,7 @@ bool are_results_close(
 
         // Early exit if any element fails
         if (abs_diff > threshold) {
+            std::cout << "Failed at index" << i << std::endl;
             return false;
         }
     }
@@ -329,22 +334,30 @@ int main(int argc, const char *argv[]) {
     // random float, not in in this case
     std::random_device rd;
     std::mt19937                  gen(rd());
-    std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);
-    buffer<dtype_out> y_ref_0(in_size);    
+    std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);  
     buffer<dtype_out> out_ref_0(output_iteration_size);
     for (int i = 0; i < in_size; i++){
         w_0[i] = i;//dist(gen);
-        y_ref_0[i] = w_0[i];
-    }
-    for(int i = 0; i < input_iteration_size; i++){
-        in_0[i] = dist(gen);
+
     }
 
+    // answer 
+    
+    // transform y_ref_0 to colum major
+    buffer<float> y_ref_col = transform_to_column_major_order( w_0, diode_size, state_size, u_size, y_size, std::pow(2, switch_size + diode_size) );
 
-    in_0[0] = 100;
-    in_0[1] = 1.2;
-    in_0[2] = 2.1;
-    in_0[3] = 0.9;
+    uint32_t C1_SWD_matrix_index = 0;
+
+
+    for (int i = 0, n = std::min(input_iteration_size, 16); i < n; ++i) {
+        // build the 32‐bit pattern we want
+        uint32_t bits = static_cast<uint32_t>(i);
+        // bit_cast that into a float (so its bit‐pattern becomes exactly 'bits')
+        in_0[i] = std::bit_cast<float>(bits);
+    }
+  
+    
+
     w_0.sync_to_device();
     in_0.sync_to_device();
     char *bufTrace = trace_res.data();
@@ -352,21 +365,32 @@ int main(int argc, const char *argv[]) {
         memset(bufTrace, 0, trace_size);
         trace_res.sync_to_device();
     }
-    // generate out_ref_0
-    int32_t in_offset = 0;
-    int32_t out_offset = 0; 
-    for(int i = 0; i < iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
-        float acc = 0;
-        for(int k = 0; k < input_size;k ++){
-            acc += in_0[in_offset];
-            in_offset++;
-        }
-        for(int l = 0; l < y_size; l++ ){
-            out_ref_0[out_offset] = acc;
-            out_offset++;
-        }
 
+    int C1_SWD_debug_mat_count = 0;
+    for(int i = 0; i <   iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
+        if(i  <  C1_DSW_buffer_size){
+            out_ref_0[i] = y_ref_col[i];
+        }
+        else{
+            out_ref_0[i ] = 0;
+        }
     }
+
+    // // generate out_ref_0
+    // int32_t in_offset = 0;
+    // int32_t out_offset = 0; 
+    // for(int i = 0; i < iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
+    //     float acc = 0;
+    //     for(int k = 0; k < input_size;k ++){
+    //         acc += in_0[in_offset];
+    //         in_offset++;
+    //     }
+    //     for(int l = 0; l < y_size; l++ ){
+    //         out_ref_0[out_offset] = acc;
+    //         out_offset++;
+    //     }
+
+    // }
 
 
     auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
@@ -401,17 +425,6 @@ int main(int argc, const char *argv[]) {
 
 
 
-    // answer 
-    
-    // transform y_ref_0 to colum major
-    buffer<float> y_ref_col = transform_to_column_major_order( y_ref_0, diode_size, state_size, u_size, y_size, std::pow(2, switch_size + diode_size) );
-// This will walk *every* slice and print the full element mapping:
-    // debug_inspect_all(
-    //     y_ref_0, y_ref_col,
-    //     diode_size, state_size, u_size, output_size,
-    //     int(std::pow(2, switch_diode_size))
-    // );
-
 
     bool pass = are_results_close(y_0, y_ref_col, 1e-4f, 1e-3f);
     // for (size_t i = 0; i < y_0.size(); i++) {
@@ -431,17 +444,17 @@ int main(int argc, const char *argv[]) {
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
     }
-    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f  );
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f, C1_DSW_buffer_size );
     if(pass==false){
         std::cout << "FAil stage2" <<std::endl;
     }
-    // for (size_t i = 0; i < out_0.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "y[" << i << "] = " << out_0[i]
-    //               << " ?= y_ref[" << i << "] = " << out_ref_0[i]
-    //               << std::endl;
-    // }
+    for (size_t i = 0; i < C1_DSW_buffer_size; i++) {
+        std::cout << std::scientific      // Use exponential notation
+                  << std::setprecision(6) // Show 2 digits after decimal
+                  << "out_0[" << i << "] = " << out_0[i]
+                  << " ?= out_ref_0[" << i << "] = " << out_ref_0[i]
+                  << std::endl;
+    }
 
     // // run with runlist
     // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);

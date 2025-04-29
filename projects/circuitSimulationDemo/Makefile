@@ -110,7 +110,7 @@ instructions: ${INSTS_TARGETS}
 link: ${MLIR_TARGET} 
 
 
-bitstream: ${XCLBIN_TARGETS} config_stage
+bitstream: ${XCLBIN_TARGETS} 
 
 ${TARGET_HOST_TEST}:${SRC_TEST}
 	$(CXX_HOST_TEST) $(CXXFLAGS_HOST_TEST) -o $(TARGET_HOST_TEST) $(SRC_TEST)

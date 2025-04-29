@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-
+#include "common_macro.h"
 #include <aie_api/aie.hpp>
 #include "circuitSimulation.h"
 template <typename T, int N>
@@ -167,35 +167,62 @@ void accum_float_value(float *in, float *out,
 
 
 
+
+
+float* retrieveMatrixOFfsetBaseOnState(const uint32_t state, const int32_t matrix_size, float* matrix_ptr) {
+
+    return  matrix_ptr + (state *matrix_size);
+}
+
+
+
 void CT_main( float *in, float*out, 
   const int32_t buffer_size_of_in, const int32_t buffer_size_of_out,
   const int32_t iteration_ste_per_buffer,
   const int32_t buffer_in_prod_lock_id, const int32_t buffer_in_con_loc_id,
-  const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id
+  const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id,
 
+  float* C1_DSW_Buffer,
+  const int32_t C1_DSW_row_size,
+  const int32_t C1_DSW_col_size
 ){
 
+  const int32_t C1_DSW_mat_size = C1_DSW_col_size * C1_DSW_row_size;
 
-
-  while(true){
+  for(uint64_t l = 0; l < MAX_LOOP_SIZE; l++ ){
     acquire_greater_equal(buffer_in_con_loc_id+48, 1);
     acquire_greater_equal(buffer_out_prod_lock_id+48, 1);
     // use buffer 0 of ping in and out
-    accum_float_value(in, out, 
-    0, 0,
-    iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
-    );
+    // accum_float_value(in, out, 
+    // 0, 0,
+    // iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+    // );
 
+
+    // float* C1_DSW_ptr = C1_DSW_Buffer;
+    // uint32_t offset_value = *(uint32_t *)( buffer_size_of_in);
+
+    uint32_t* in_int32_t = (uint32_t *)( in);
+    for(uint32_t i = 0; i < 16; i++){
+      // float* C1_DSW_ptr = C1_DSW_Buffer + i*C1_DSW_mat_size;
+
+      float* C1_DSW_ptr = retrieveMatrixOFfsetBaseOnState(*in_int32_t ,C1_DSW_mat_size ,C1_DSW_Buffer  );
+      for(int k =0; k < C1_DSW_mat_size; k++){
+          *out++ = *C1_DSW_ptr++;
+      }
+      in_int32_t++;
+
+    }
     release(buffer_in_prod_lock_id+48, 1);
     release(buffer_out_con_lock_id+48, 1);
 
     acquire_greater_equal(buffer_in_con_loc_id+48, 1);
     acquire_greater_equal(buffer_out_prod_lock_id+48, 1);
-    // use buffer 0 of ping in and out
-    accum_float_value(in, out, 
-      buffer_size_of_in, buffer_size_of_out,
-    iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
-    );
+    // // use buffer 0 of ping in and out
+    // accum_float_value(in, out, 
+    //   buffer_size_of_in, buffer_size_of_out,
+    // iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+    // );
 
     release(buffer_in_prod_lock_id+48, 1);
     release(buffer_out_con_lock_id+48, 1);
