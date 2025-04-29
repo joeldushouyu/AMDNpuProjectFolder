@@ -18,7 +18,8 @@
 #include "mvm_sequence.hpp"
 #include "experimental/xrt_kernel.h"
 #include "experimental/xrt_queue.h"
-
+#include <nlohmann/json.hpp> // Include the nlohmann/json header
+using json = nlohmann::json;
 namespace po = boost::program_options;
 #include <vector>
 #include <cmath>    // For std::fabs, std::max
@@ -223,52 +224,77 @@ void linear(buffer<dtype_out>& y, buffer<dtype_in>& w, buffer<dtype_in>& x);
 int main(int argc, const char *argv[]) {
     // Fix the seed to ensure reproducibility in CI.
     srand(0);
-    // Program arguments parsing
-    po::options_description desc("Allowed options");
-    po::variables_map vm;
-    arg_utils::add_default_options(desc);
 
-    // Add custom options
-    // desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
-    // desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
-    // desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
 
-    arg_utils::parse_options(argc, argv, desc, vm);
+
+
+
+    std::ifstream file("final_config.json");
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file 'final_config.json'" << std::endl;
+        return 1;
+    }
+
+    // 2. Read the JSON data from the file
+    json data;
+    try {
+        file >> data; // Use stream extraction to read JSON
+    }
+    catch (json::parse_error& e) {
+        std::cerr << "Error: Parse error - " << e.what() << std::endl;
+        return 1;
+    }
+    file.close();
+
+    int trace_size, state_size, u_size, y_size;
+    int diode_size, switch_size;
+    int C1_DSW_row_size, C1_DSW_col_size, C1_DSW_matrix_size, C1_DSW_buffer_size;
+    int A_B_C_D_row_size, A_B_C_D_col_size, A_B_C_D_matrix_size, A_B_C_D_buffer_size;
+    int input_switch_size, input_size;
+    int iteration_step_per_ping_pong_buffer;
+    int buffer_size_of_in_ping_poing, buffer_size_of_out_ping_pong;
+    int ping_pong_buffer_iteration;
     
-    // User logic
-    // int M = vm["M"].as<int>();
-    // int K = vm["K"].as<int>();
-    // int Iterations = vm["I"].as<int>();
-    // int N = 1;
-    // int Y_VOLUME = M * 1;
-    // int W_VOLUME = M * K;
-    // int X_VOLUME = 1 * K;
+    try {
+        trace_size = data["trace_size"];
+        state_size = data["state_size"];
+        u_size = data["u_size"];
+        y_size = data["y_size"];
+        diode_size = data["diode_size"];
+        switch_size = data["switch_size"];
+        C1_DSW_row_size = data["C1_DSW_row_size"];
+        C1_DSW_col_size = data["C1_DSW_col_size"];
+        C1_DSW_matrix_size = data["C1_DSW_matrix_size"];
+        C1_DSW_buffer_size = data["C1_DSW_buffer_size"];
+        A_B_C_D_row_size = data["A_B_C_D_row_size"];
+        A_B_C_D_col_size = data["A_B_C_D_col_size"];
+        A_B_C_D_matrix_size = data["A_B_C_D_matrix_size"];
+        A_B_C_D_buffer_size = data["A_B_C_D_buffer_size"];
+        input_switch_size = data["input_switch_size"];
+        input_size = data["input_size"];
+        iteration_step_per_ping_pong_buffer = data["iteration_step_per_ping_pong_buffer"];
+        buffer_size_of_in_ping_poing = data["buffer_size_of_in_ping_poing"];
+        buffer_size_of_out_ping_pong = data["buffer_size_of_out_ping_pong"];
+        ping_pong_buffer_iteration = data["ping_pong_buffer_iteration"];
+    }
+    catch (json::out_of_range& e) {
+        std::cerr << "Error: Key not found - " << e.what() << std::endl;
+        return 1;
+    }
+    catch (json::type_error& e){
+        std::cerr << "Error: Type error - " << e.what() << std::endl;
+        return 1;
+    }
     
-    int diode_size = 2;
-    int state_size = 6;
-    int u_size = 1;
-    int output_size = 14;
-    int switch_size = 2;
 
-    int switch_diode_size = diode_size + switch_size;
 
-    int switch_diode_buffer_size = 672;
-    int ABCD_buffer_size = 3808;
 
-    // TODO: some static assert statement
 
-    assert(switch_diode_buffer_size ==std::pow(2, switch_diode_size)*(3*diode_size)*(state_size+u_size)  );
-    assert(ABCD_buffer_size ==    std::pow(2, switch_diode_size)*(state_size + 2*output_size )*(state_size+u_size) );
-    
-    int in_size = switch_diode_buffer_size  +ABCD_buffer_size;
-    int inputPerIteration= 2;
-    int outputPerIteration = 14;
-    int iterationTimeStep = 364;
-    int number_of_iterationTimeStep = 4; 
+
+    int in_size = C1_DSW_buffer_size  +A_B_C_D_buffer_size;
     int Iterations = 1; // NOTE: only can run one time due to matrix balance transfer on s2mm
                     // once transfer matrix, the s2mm-1 will never go back to transfer matrix mode
-    // can do multiple time if reload bitstream everytime
-    int trace_size = 0; //TODO:
+
     // NPU instance
     npu_app npu_instance(1);
     if (VERBOSE >= 1){
@@ -288,8 +314,8 @@ int main(int argc, const char *argv[]) {
     // npu_instance.interperate_bd(1);
 
     // compare the two sequences
-    int input_iteration_size = number_of_iterationTimeStep * iterationTimeStep * inputPerIteration;
-    int output_iteration_size = number_of_iterationTimeStep * iterationTimeStep * outputPerIteration;
+    int input_iteration_size = ping_pong_buffer_iteration * iteration_step_per_ping_pong_buffer * input_size;
+    int output_iteration_size = ping_pong_buffer_iteration * iteration_step_per_ping_pong_buffer * y_size;
     buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
     buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(in_size, 3, app_id_0);
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(in_size, 4, app_id_0);
@@ -329,13 +355,13 @@ int main(int argc, const char *argv[]) {
     // generate out_ref_0
     int32_t in_offset = 0;
     int32_t out_offset = 0; 
-    for(int i = 0; i < iterationTimeStep* number_of_iterationTimeStep; i++){
+    for(int i = 0; i < iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
         float acc = 0;
-        for(int k = 0; k < inputPerIteration;k ++){
+        for(int k = 0; k < input_size;k ++){
             acc += in_0[in_offset];
             in_offset++;
         }
-        for(int l = 0; l < outputPerIteration; l++ ){
+        for(int l = 0; l < y_size; l++ ){
             out_ref_0[out_offset] = acc;
             out_offset++;
         }
@@ -378,7 +404,7 @@ int main(int argc, const char *argv[]) {
     // answer 
     
     // transform y_ref_0 to colum major
-    buffer<float> y_ref_col = transform_to_column_major_order( y_ref_0, diode_size, state_size, u_size, output_size, std::pow(2, switch_diode_size) );
+    buffer<float> y_ref_col = transform_to_column_major_order( y_ref_0, diode_size, state_size, u_size, y_size, std::pow(2, switch_size + diode_size) );
 // This will walk *every* slice and print the full element mapping:
     // debug_inspect_all(
     //     y_ref_0, y_ref_col,
