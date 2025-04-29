@@ -34,6 +34,17 @@ import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 from enum import IntEnum
+from aie.extras.dialects.ext.arith import constant, index_cast
+
+from aie.ir import *
+from aie.ir import MemRefType, IndexType
+from aie.dialects import arith, memref
+from aie.dialects.memref import AllocaScopeOp
+
+from aie.helpers.util import np_ndarray_type_to_memref_type
+from aie.dialects.memref import alloc, store, alloca
+from aie.extras import types as T
+
 
 from custom_npu_dma_memcpy import NpuDmaMemcpyNd as custom_npu_dma_memcpy_nd
 from aie.dialects.aiex import control_packet
@@ -169,11 +180,7 @@ def single_mat_vect_mult():
                 
         
         
-        accum_float_value_func = external_func("accum_float_value", inputs=[
-            in_data_ty, out_data_ty,  
-            np.int32, np.int32,
-            np.int32, np.int32, np.int32
-        ])
+
         
 
         switch_diode_matrix_ty = np.ndarray[ (buffer_size_of_switch_diode, ), dtype_in]
@@ -247,7 +254,7 @@ def single_mat_vect_mult():
                 (6, [in_buffer_prod_lock],  in_buffer[0],   buffer_size_of_in_ping_pong, buffer_size_of_in_ping_pong, [in_buffer_con_lock],5, [] ), # becase matrix only transfer once
             ]
             chain1_s_e = (chain0_s_e[1]+1,chain0_s_e[1]+1+len(chain1))
-            
+
             chain2 = [
                 (8,  [out_buffer_con_lock], out_buffer[0],       0,                          buffer_size_of_out_ping_pong, [out_buffer_prod_lock], 9, [9,0]),
                 (9, [out_buffer_con_lock], out_buffer[0],       buffer_size_of_out_ping_pong, buffer_size_of_out_ping_pong, [out_buffer_prod_lock],  8, [9,0]),
@@ -275,29 +282,28 @@ def single_mat_vect_mult():
                 next_bd(block[1])
             with block[3]:
                 EndOp()
+                
+                
 
+        
+        CT_0_2_main_func = external_func("CT_main", inputs=[
+            in_data_ty, out_data_ty,
+            np.int32, np.int32, np.int32,
+            np.int32, np.int32, np.int32, np.int32
             
+        ])
+        
         @core(ComputeTile_0_2, "passThrough.o")
         def core_body():
-            for _ in range_(sys.maxsize):
-                use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
-                accum_float_value_func( in_buffer[0], out_buffer[0],
-                                       constant(0), constant(0),   # ping pong 0, no offset need
-                                       constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
-                                       )
-                use_lock(out_buffer_con_lock, LockAction.Release, value=1)
-                use_lock(in_buffer_prod_lock, LockAction.Release, value=1)
+
+            CT_0_2_main_func(
+                in_buffer[0], out_buffer[0],
+                constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong), constant(iteration_step_per_buffer),
+                8,9,10,11
                 
-                use_lock(in_buffer_con_lock, LockAction.AcquireGreaterEqual, value=1)
-                use_lock(out_buffer_prod_lock,LockAction.AcquireGreaterEqual, value=1)
-                accum_float_value_func( in_buffer[0], out_buffer[0],
-                                       constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong),
-                                       constant(iteration_step_per_buffer), constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong)
-                                       )
-                use_lock(out_buffer_con_lock, LockAction.Release, value=1)
-                use_lock(in_buffer_prod_lock, LockAction.Release, value=1)                
-                
+            )
+
+
         @core(ComputeTile_1_2, "passThrough.o")
         def core_body():
           for _ in range_(sys.maxsize):

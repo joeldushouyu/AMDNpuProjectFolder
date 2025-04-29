@@ -68,6 +68,14 @@ $(info HOST_SRCS (after EXTRA) = $(HOST_SRCS))
 CXXFLAGS += -I$(TemplaeHostDir)
 CXXFLAGS += -I$(TemplateRepoDir)/common
 include $(TemplateRepoDir)/makefiles/host.mk
+
+
+CXX_HOST_TEST= g++
+CXXFLAGS_HOST_TEST =  -std=c++17 -Wall -O2
+# Target
+TARGET_HOST_TEST = test_host
+SRC_TEST = test.cpp
+
 .PHONY: run all kernel link bitstream host clean instructions route
 all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 
@@ -96,13 +104,15 @@ link: ${MLIR_TARGET}
 
 bitstream: ${XCLBIN_TARGETS}
 
+${TARGET_HOST_TEST}:${SRC_TEST}
+	$(CXX_HOST_TEST) $(CXXFLAGS_HOST_TEST) -o $(TARGET_HOST_TEST) $(SRC_TEST)
 
 host: ${HOST_C_TARGET}
 
 
 clean_host:
 	-@rm -rf build/host
-
+	rm -f $(TARGET_HOST_TEST)
 
 run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
 	./${HOST_C_TARGET} | tee out.log
