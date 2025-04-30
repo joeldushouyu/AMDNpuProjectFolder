@@ -264,18 +264,17 @@ def single_mat_vect_mult():
             in_data_ty, out_data_ty,
             np.int32, np.int32, np.int32,
             np.int32, np.int32, np.int32, np.int32,
-            switch_diode_matrix_ty, np.int32, np.int32
-            
+            switch_diode_matrix_ty
         ])
-        
-        @core(ComputeTile_0_2, "passThrough.o")
+
+        @core(ComputeTile_0_2, "mainKernel.o")
         def core_body():
             # for _ in range_(sys.maxsize):
             CT_0_2_main_func(
                 in_buffer[0], out_buffer[0],
                 constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong), constant(iteration_step_per_ping_pong_buffer),
                 constant(8),constant(9),constant(10),constant(11),
-                switch_diode_buffer[0], constant(C1_DSW_row_size), constant(C1_DSW_col_size)
+                switch_diode_buffer[0]
                 
             )
 

@@ -70,16 +70,29 @@ CXXFLAGS += -I$(TemplateRepoDir)/common
 include $(TemplateRepoDir)/makefiles/host.mk
 
 
-CXX_HOST_TEST= g++
-CXXFLAGS_HOST_TEST =  -std=c++17 -Wall -O2
-# Target
+CXX_HOST_TEST = g++
+CXXFLAGS_HOST_TEST = -std=c++17 -Wall -O2
 TARGET_HOST_TEST = test_host
-SRC_TEST = test.cpp
+SRC_TEST = test.cpp kernel/circuitSimulation.cc
+
+.PHONY: test_host_run
+
 
 .PHONY: run all kernel link bitstream host clean instructions route
 all: config_stage ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
 
-clean:
+
+
+${TARGET_HOST_TEST}: ${SRC_TEST}
+	$(CXX_HOST_TEST) $(CXXFLAGS_HOST_TEST) -o $@ $^
+test_host_run: ${TARGET_HOST_TEST}
+	./${TARGET_HOST_TEST}
+
+clean_test:
+	-@rm -f ${TARGET_HOST_TEST}
+
+
+clean:clean_test 
 	-@rm -rf build 
 	-@rm -rf log
 	-@rm -rf *.exe
@@ -87,19 +100,19 @@ clean:
 	-@rm -rf route.json
 	-@rm -rf generated.txt
 	-@rm -rf route*.txt
-	rm -f $(TARGET_HOST_TEST)
-	rm  final_config.json
-	rm ./iron/final_config.json
-	rm ./host/final_config.json
-
-test:
-	echo "test"
-	echo ${AIEOPT_DIR}
+	-@rm -f $(TARGET_HOST_TEST)
+	-@rm -f ./iron/final_config.json
+	-@rm -f ./host/circuitConfig.h
+	-@rm -f ./kernel/circuitConfig.h
+	-@rm -f final_config.json
+	-@rm -f circuitConfig.h
 
 config_stage:
 	python generate_config.py 
 	cp final_config.json  ./iron/
-	cp final_config.json  ./host/
+	cp circuitConfig.h ./host/
+	cp circuitConfig.h ./kernel/
+
 
 kernel: ${KERNEL_OBJS} 
 
@@ -112,8 +125,6 @@ link: ${MLIR_TARGET}
 
 bitstream: ${XCLBIN_TARGETS} 
 
-${TARGET_HOST_TEST}:${SRC_TEST}
-	$(CXX_HOST_TEST) $(CXXFLAGS_HOST_TEST) -o $(TARGET_HOST_TEST) $(SRC_TEST)
 
 host: ${HOST_C_TARGET} 
 

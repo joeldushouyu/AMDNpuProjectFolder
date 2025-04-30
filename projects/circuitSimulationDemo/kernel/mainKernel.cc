@@ -1,103 +1,88 @@
-// //===- passThrough.cc -------------------------------------------*- C++ -*-===//
-// //
-// // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// // See https://llvm.org/LICENSE.txt for license information.
-// // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// //
-// // Copyright (C) 2022, Advanced Micro Devices, Inc.
-// //
-// //===----------------------------------------------------------------------===//
+//===- passThrough.cc -------------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
 
-// // #define __AIENGINE__ 1
-// #define NOCPP
+// #define __AIENGINE__ 1
+#define NOCPP
 
-// #include <stdint.h>
-// #include <stdlib.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "common_macro.h"
+#include <aie_api/aie.hpp>
 
-// #include <aie_api/aie.hpp>
-// #include "circuitSimulation.h"
-
-
-
-// float* retrieveMatrixOFfsetBaseOnState(const uint32_t state, const int32_t matrix_size, float* matrix_ptr) {
-
-//     return  matrix_ptr + (state *matrix_size);
-// }
-// extern "C" {
+#include "circuitConfig.h"
+#include "circuitSimulation.h"
 
 
-//     void CT_main(float* in, float* out,
-//         const int32_t buffer_size_of_in, const int32_t buffer_size_of_out,
-//         const int32_t iteration_ste_per_buffer,
-//         const int32_t buffer_in_prod_lock_id, const int32_t buffer_in_con_loc_id,
-//         const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id,
+float* retrieveMatrixOFfsetBaseOnState(const uint32_t state, const int32_t matrix_size, float* matrix_ptr) {
 
-//         float* C1_DSW_Buffer,
-//         const int32_t C1_DSW_row_size,
-//         const int32_t C1_DSW_col_size
-//         ) {
-
-//         const uint32_t C1_matrix_size = C1_DSW_row_size * C1_DSW_col_size;
-
-//         while (true) {
-//             acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
-//             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
-
-//             // only read first 16 input and write corresponding C1_diode_SW_Buffer back
-//             for(int i = 0; i < 16; i++){
-//                 float input  = *in;
-//                 in++;
-//                 uint32_t input_switch_state = *in;
-//                 in ++;
-
-//                 float *offset_header =  retrieveMatrixOFfsetBaseOnState( input_switch_state,
-//                 C1_matrix_size, C1_DSW_Buffer  );
-                
-//                 // now write the matrix back to output
-//                 for(int k  = 0; k <C1_matrix_size; k++ ){
-//                     *out = *offset_header;
-//                     out++;
-//                     offset_header++;
-
-//                 }
-//             }   
-
-            
-//             release(buffer_in_prod_lock_id + 48, 1);
-//             release(buffer_out_con_lock_id + 48, 1);
+    return  matrix_ptr + (state * matrix_size);
+}
 
 
+extern "C" {
+    void CT_main(float* in, float* out,
+        const int32_t buffer_size_of_in, const int32_t buffer_size_of_out,
+        const int32_t iteration_ste_per_buffer,
+        const int32_t buffer_in_prod_lock_id, const int32_t buffer_in_con_loc_id,
+        const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id,
 
-//             acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
-//             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
+        float* C1_DSW_Buffer
+    ) {
 
-//                 // only read first 16 input and write corresponding C1_diode_SW_Buffer back
-//                 for(int i = 0; i < 16; i++){
-//                     float input  = *in;
-//                     in++;
-//                     uint32_t input_switch_state = *in;
-//                     in ++;
+        const int32_t C1_DSW_mat_size = C1_DSW_MATRIX_SIZE;
+        const uint32_t externalSwitchDiodeStates = 0x0;
 
-//                     float *offset_header =  retrieveMatrixOFfsetBaseOnState( input_switch_state,
-//                     C1_matrix_size, C1_DSW_Buffer  );
-                    
-//                     // now write the matrix back to output
-//                     for(int k  = 0; k <C1_matrix_size; k++ ){
-//                         *out = *offset_header;
-//                         out++;
-//                         offset_header++;
+        float_t x_cur_and_u[ROUND_UP_TO_16(STATE_SIZE + U_SIZE)] =  {0};
+        
 
-//                     }
-//                 }   
+        for (uint64_t l = 0; l < MAX_LOOP_SIZE; l++) {
+            acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
+            acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
+            // use buffer 0 of ping in and out
+            // accum_float_value(in, out, 
+            // 0, 0,
+            // iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+            // );
 
 
-//             release(buffer_in_prod_lock_id + 48, 1);
-//             release(buffer_out_con_lock_id + 48, 1);
+            // float* C1_DSW_ptr = C1_DSW_Buffer;
+            // uint32_t offset_value = *(uint32_t *)( buffer_size_of_in);
+
+            uint32_t* in_int32_t = (uint32_t*)(in);
+            for (uint32_t i = 0; i < 16; i++) {
+                // float* C1_DSW_ptr = C1_DSW_Buffer + i*C1_DSW_mat_size;
+
+                float* C1_DSW_ptr = retrieveMatrixOFfsetBaseOnState(*in_int32_t, C1_DSW_mat_size, C1_DSW_Buffer);
+                for (int k = 0; k < C1_DSW_mat_size; k++) {
+                    *out++ = *C1_DSW_ptr++;
+                }
+                in_int32_t++;
+
+            }
+            release(buffer_in_prod_lock_id + 48, 1);
+            release(buffer_out_con_lock_id + 48, 1);
+
+            acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
+            acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
+            // // use buffer 0 of ping in and out
+            // accum_float_value(in, out, 
+            //   buffer_size_of_in, buffer_size_of_out,
+            // iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+            // );
+
+            release(buffer_in_prod_lock_id + 48, 1);
+            release(buffer_out_con_lock_id + 48, 1);
 
 
 
 
-//         }
-//     }
-
-// } // extern "C"
+        }
+    }
+} // extern "C"

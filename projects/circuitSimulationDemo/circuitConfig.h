@@ -1,0 +1,26 @@
+// Auto-generated config header
+#ifndef CIRCUIT_CONFIG_H
+#define CIRCUIT_CONFIG_H
+
+#define TRACE_SIZE 0
+#define STATE_SIZE 6
+#define U_SIZE 1
+#define Y_SIZE 14
+#define DIODE_SIZE 2
+#define SWITCH_SIZE 2
+#define C1_DSW_ROW_SIZE 6
+#define C1_DSW_COL_SIZE 7
+#define C1_DSW_MATRIX_SIZE 42
+#define C1_DSW_BUFFER_SIZE 672
+#define A_B_C_D_ROW_SIZE 34
+#define A_B_C_D_COL_SIZE 7
+#define A_B_C_D_MATRIX_SIZE 238
+#define A_B_C_D_BUFFER_SIZE 3808
+#define INPUT_SWITCH_SIZE 1
+#define INPUT_SIZE 2
+#define ITERATION_STEP_PER_PING_PONG_BUFFER 364
+#define BUFFER_SIZE_OF_IN_PING_POING 728
+#define BUFFER_SIZE_OF_OUT_PING_PONG 5096
+#define PING_PONG_BUFFER_ITERATION 4
+
+#endif // CIRCUIT_CONFIG_H

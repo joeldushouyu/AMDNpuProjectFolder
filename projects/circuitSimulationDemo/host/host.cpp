@@ -25,6 +25,7 @@ namespace po = boost::program_options;
 #include <cmath>    // For std::fabs, std::max
 #include <algorithm> // For std::max
 
+#include "circuitConfig.h"
 
 using int32 = std::int32_t;
 bool are_results_close(
@@ -234,69 +235,69 @@ int main(int argc, const char *argv[]) {
 
 
 
-    std::ifstream file("final_config.json");
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file 'final_config.json'" << std::endl;
-        return 1;
-    }
+    // std::ifstream file("final_config.json");
+    // if (!file.is_open()) {
+    //     std::cerr << "Error: Could not open file 'final_config.json'" << std::endl;
+    //     return 1;
+    // }
 
-    // 2. Read the JSON data from the file
-    json data;
-    try {
-        file >> data; // Use stream extraction to read JSON
-    }
-    catch (json::parse_error& e) {
-        std::cerr << "Error: Parse error - " << e.what() << std::endl;
-        return 1;
-    }
-    file.close();
+    // // 2. Read the JSON data from the file
+    // json data;
+    // try {
+    //     file >> data; // Use stream extraction to read JSON
+    // }
+    // catch (json::parse_error& e) {
+    //     std::cerr << "Error: Parse error - " << e.what() << std::endl;
+    //     return 1;
+    // }
+    // file.close();
 
-    int trace_size, state_size, u_size, y_size;
-    int diode_size, switch_size;
-    int C1_DSW_row_size, C1_DSW_col_size, C1_DSW_matrix_size, C1_DSW_buffer_size;
-    int A_B_C_D_row_size, A_B_C_D_col_size, A_B_C_D_matrix_size, A_B_C_D_buffer_size;
-    int input_switch_size, input_size;
-    int iteration_step_per_ping_pong_buffer;
-    int buffer_size_of_in_ping_poing, buffer_size_of_out_ping_pong;
-    int ping_pong_buffer_iteration;
+    // int TRACE_SIZE, STATE_SIZE, U_SIZE, Y_SIZE;
+    // int DIODE_SIZE, SWITCH_SIZE;
+    // int C1_DSW_ROW_SIZE, C1_DSW_COL_SIZE, C1_DSW_MATRIX_SIZE, C1_DSW_BUFFER_SIZE;
+    // int A_B_C_D_ROW_SIZE, A_B_C_D_COL_SIZE, A_B_C_D_MATRIX_SIZE, A_B_C_D_BUFFER_SIZE;
+    // int INPUT_SWITCH_SIZE, INPUT_SIZE;
+    // int ITERATION_STEP_PER_PING_PONG_BUFFER;
+    // int BUFFER_SIZE_OF_IN_PING_POING, BUFFER_SIZE_OF_OUT_PING_PONG;
+    // int PING_PONG_BUFFER_ITERATION;
     
-    try {
-        trace_size = data["trace_size"];
-        state_size = data["state_size"];
-        u_size = data["u_size"];
-        y_size = data["y_size"];
-        diode_size = data["diode_size"];
-        switch_size = data["switch_size"];
-        C1_DSW_row_size = data["C1_DSW_row_size"];
-        C1_DSW_col_size = data["C1_DSW_col_size"];
-        C1_DSW_matrix_size = data["C1_DSW_matrix_size"];
-        C1_DSW_buffer_size = data["C1_DSW_buffer_size"];
-        A_B_C_D_row_size = data["A_B_C_D_row_size"];
-        A_B_C_D_col_size = data["A_B_C_D_col_size"];
-        A_B_C_D_matrix_size = data["A_B_C_D_matrix_size"];
-        A_B_C_D_buffer_size = data["A_B_C_D_buffer_size"];
-        input_switch_size = data["input_switch_size"];
-        input_size = data["input_size"];
-        iteration_step_per_ping_pong_buffer = data["iteration_step_per_ping_pong_buffer"];
-        buffer_size_of_in_ping_poing = data["buffer_size_of_in_ping_poing"];
-        buffer_size_of_out_ping_pong = data["buffer_size_of_out_ping_pong"];
-        ping_pong_buffer_iteration = data["ping_pong_buffer_iteration"];
-    }
-    catch (json::out_of_range& e) {
-        std::cerr << "Error: Key not found - " << e.what() << std::endl;
-        return 1;
-    }
-    catch (json::type_error& e){
-        std::cerr << "Error: Type error - " << e.what() << std::endl;
-        return 1;
-    }
+    // try {
+    //     trace_size = data["trace_size"];
+    //     state_size = data["state_size"];
+    //     u_size = data["u_size"];
+    //     y_size = data["y_size"];
+    //     diode_size = data["diode_size"];
+    //     switch_size = data["switch_size"];
+    //     C1_DSW_row_size = data["C1_DSW_row_size"];
+    //     C1_DSW_col_size = data["C1_DSW_col_size"];
+    //     C1_DSW_matrix_size = data["C1_DSW_matrix_size"];
+    //     C1_DSW_buffer_size = data["C1_DSW_buffer_size"];
+    //     A_B_C_D_row_size = data["A_B_C_D_row_size"];
+    //     A_B_C_D_col_size = data["A_B_C_D_col_size"];
+    //     A_B_C_D_matrix_size = data["A_B_C_D_matrix_size"];
+    //     A_B_C_D_buffer_size = data["A_B_C_D_buffer_size"];
+    //     input_switch_size = data["input_switch_size"];
+    //     input_size = data["input_size"];
+    //     iteration_step_per_ping_pong_buffer = data["iteration_step_per_ping_pong_buffer"];
+    //     buffer_size_of_in_ping_poing = data["buffer_size_of_in_ping_poing"];
+    //     buffer_size_of_out_ping_pong = data["buffer_size_of_out_ping_pong"];
+    //     ping_pong_buffer_iteration = data["ping_pong_buffer_iteration"];
+    // }
+    // catch (json::out_of_range& e) {
+    //     std::cerr << "Error: Key not found - " << e.what() << std::endl;
+    //     return 1;
+    // }
+    // catch (json::type_error& e){
+    //     std::cerr << "Error: Type error - " << e.what() << std::endl;
+    //     return 1;
+    // }
     
 
 
 
 
 
-    int in_size = C1_DSW_buffer_size  +A_B_C_D_buffer_size;
+    int in_size = C1_DSW_BUFFER_SIZE  +A_B_C_D_BUFFER_SIZE;
     int Iterations = 1; // NOTE: only can run one time due to matrix balance transfer on s2mm
                     // once transfer matrix, the s2mm-1 will never go back to transfer matrix mode
 
@@ -319,15 +320,15 @@ int main(int argc, const char *argv[]) {
     // npu_instance.interperate_bd(1);
 
     // compare the two sequences
-    int input_iteration_size = ping_pong_buffer_iteration * iteration_step_per_ping_pong_buffer * input_size;
-    int output_iteration_size = ping_pong_buffer_iteration * iteration_step_per_ping_pong_buffer * y_size;
+    int input_iteration_size = PING_PONG_BUFFER_ITERATION * ITERATION_STEP_PER_PING_PONG_BUFFER * INPUT_SIZE;
+    int output_iteration_size = PING_PONG_BUFFER_ITERATION * ITERATION_STEP_PER_PING_PONG_BUFFER * Y_SIZE;
     buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
     buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(in_size, 3, app_id_0);
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(in_size, 4, app_id_0);
     buffer<dtype_in> in_0 = npu_instance.create_bo_buffer<dtype_in>( input_iteration_size, 5, app_id_0);
     buffer<dtype_out> out_0 = npu_instance.create_bo_buffer<dtype_out>(output_iteration_size, 6, app_id_0);
 
-    int tmp_trace_size = (trace_size > 0) ? trace_size :1;
+    int tmp_trace_size = (TRACE_SIZE > 0) ? TRACE_SIZE :1;
     buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size,7, app_id_0 );
 
 
@@ -344,7 +345,7 @@ int main(int argc, const char *argv[]) {
     // answer 
     
     // transform y_ref_0 to colum major
-    buffer<float> y_ref_col = transform_to_column_major_order( w_0, diode_size, state_size, u_size, y_size, std::pow(2, switch_size + diode_size) );
+    buffer<float> y_ref_col = transform_to_column_major_order( w_0, DIODE_SIZE, STATE_SIZE, U_SIZE, Y_SIZE, std::pow(2, SWITCH_SIZE + DIODE_SIZE) );
 
     uint32_t C1_SWD_matrix_index = 0;
 
@@ -361,14 +362,14 @@ int main(int argc, const char *argv[]) {
     w_0.sync_to_device();
     in_0.sync_to_device();
     char *bufTrace = trace_res.data();
-    if(trace_size>0){
-        memset(bufTrace, 0, trace_size);
+    if(TRACE_SIZE>0){
+        memset(bufTrace, 0, TRACE_SIZE);
         trace_res.sync_to_device();
     }
 
     int C1_SWD_debug_mat_count = 0;
-    for(int i = 0; i <   iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
-        if(i  <  C1_DSW_buffer_size){
+    for(int i = 0; i <   ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
+        if(i  <  C1_DSW_BUFFER_SIZE){
             out_ref_0[i] = y_ref_col[i];
         }
         else{
@@ -415,9 +416,9 @@ int main(int argc, const char *argv[]) {
 
     y_0.sync_from_device();    
     out_0.sync_from_device();
-    if(trace_size > 0){
+    if(TRACE_SIZE > 0){
         trace_res.sync_from_device();
-        npu_instance.write_out_trace(((char *)bufTrace), trace_size,
+        npu_instance.write_out_trace(((char *)bufTrace), TRACE_SIZE,
         "trace.txt");
     }
 
@@ -444,11 +445,11 @@ int main(int argc, const char *argv[]) {
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
     }
-    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f, C1_DSW_buffer_size );
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f, C1_DSW_BUFFER_SIZE );
     if(pass==false){
         std::cout << "FAil stage2" <<std::endl;
     }
-    for (size_t i = 0; i < C1_DSW_buffer_size; i++) {
+    for (size_t i = 0; i < C1_DSW_BUFFER_SIZE; i++) {
         std::cout << std::scientific      // Use exponential notation
                   << std::setprecision(6) // Show 2 digits after decimal
                   << "out_0[" << i << "] = " << out_0[i]

@@ -1,5 +1,5 @@
-#ifndef __CIRCUITSIM__
-#define __CIRCUITSIM__
+#ifndef __COMMON_CONFIG__
+#define __COMMON_CONFIG__
 
 #define MAX_LOOP_SIZE 9223372036854775807
 // #define EXTERNAL_SWITCH_NUMBER 2

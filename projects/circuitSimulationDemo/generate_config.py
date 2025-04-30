@@ -3,6 +3,35 @@
 
 import json
 import math
+
+
+
+
+def cpp_define(key, value):
+    key = key.upper() 
+    if isinstance(value, bool):
+        return f"#define {key} {'1' if value else '0'}"
+    elif isinstance(value, (int, float)):
+        return f"#define {key} {value}"
+    elif isinstance(value, str):
+        return f'#define {key} "{value}"'
+    else:
+        raise TypeError(f"Unsupported type for key {key}: {type(value)}")
+
+def generate_header(json_file, header_file):
+    with open(json_file, "r") as f:
+        config = json.load(f)
+
+    with open(header_file, "w") as f:
+        f.write("// Auto-generated config header\n")
+        f.write("#ifndef CIRCUIT_CONFIG_H\n#define CIRCUIT_CONFIG_H\n\n")
+        for key, value in config.items():
+            f.write(cpp_define(key, value) + "\n")
+        f.write("\n#endif // CIRCUIT_CONFIG_H\n")
+
+
+
+
 def custom_floor(x, multiplier):
   return math.floor(x / multiplier) * multiplier
 
@@ -99,6 +128,8 @@ try:
         with open("final_config.json","w") as outfile:
             json.dump( extracted_Data, outfile, indent=4)
         
+        
+        generate_header("final_config.json", "circuitConfig.h")
 
 except FileNotFoundError:
     print("Error: The file 'config.json' was not found.")
