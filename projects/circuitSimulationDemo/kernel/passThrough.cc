@@ -45,66 +45,66 @@ __attribute__((noinline)) void passThrough_simple(float *restrict in, float*rest
 }
 
 
-template<typename T>
-__attribute__((noinline)) void accumValue(float *restrict in, float*restrict out,
-  const int32_t in_offset,  const int32_t out_offset,
-  const int32_t iteration_size, const int32_t input_size, const int32_t output_size
-){
+// template<typename T>
+// __attribute__((noinline)) void accumValue(float *restrict in, float*restrict out,
+//   const int32_t in_offset,  const int32_t out_offset,
+//   const int32_t iteration_size, const int32_t input_size, const int32_t output_size
+// ){
   
-  in += in_offset;
-  out+= out_offset;
-  // assert divide out without any remainder
-  int32_t input_per_iteration_size = input_size / iteration_size;
-  int32_t output_per_iteration_size = output_size / iteration_size;
-  event0();
+//   in += in_offset;
+//   out+= out_offset;
+//   // assert divide out without any remainder
+//   int32_t input_per_iteration_size = input_size / iteration_size;
+//   int32_t output_per_iteration_size = output_size / iteration_size;
+//   event0();
 
 
-  for (int32_t i = 0; i < iteration_size; i++){
-    float acc= 0;
-    for(int32_t k = 0; k < input_per_iteration_size; k++){
-      // acc += *in;
-      if(k+1 == input_per_iteration_size){
-        // if(*debug_input == 100){
-          acc += *in;
-        // }else{
-        //   acc +=0;
-        // }
-      }else{
-        acc += *in;
-      }
+//   for (int32_t i = 0; i < iteration_size; i++){
+//     float acc= 0;
+//     for(int32_t k = 0; k < input_per_iteration_size; k++){
+//       // acc += *in;
+//       if(k+1 == input_per_iteration_size){
+//         // if(*debug_input == 100){
+//           acc += *in;
+//         // }else{
+//         //   acc +=0;
+//         // }
+//       }else{
+//         acc += *in;
+//       }
 
-      // if(k +1 == input_per_iteration_size){
+//       // if(k +1 == input_per_iteration_size){
 
-      //   // This means the float value is stored in Little Endian mode
-      //   uint8_t *pt = (uint8_t *)in;
-      //   uint8_t v1 = *pt++;
-      //   uint8_t v2 = *pt++;
-      //   uint8_t v3 = *pt++;
-      //   uint8_t v4 = *pt++;
+//       //   // This means the float value is stored in Little Endian mode
+//       //   uint8_t *pt = (uint8_t *)in;
+//       //   uint8_t v1 = *pt++;
+//       //   uint8_t v2 = *pt++;
+//       //   uint8_t v3 = *pt++;
+//       //   uint8_t v4 = *pt++;
         
-      //   // Now instead of memcpy:
-      //   uint32_t bits = 
-      //   ((uint32_t)v1) |
-      //   ((uint32_t)v2 << 8) |
-      //   ((uint32_t)v3 << 16) |
-      //   ((uint32_t)v4 << 24);
-      //   float f = *(float *)&bits;
-      //   acc += f;
+//       //   // Now instead of memcpy:
+//       //   uint32_t bits = 
+//       //   ((uint32_t)v1) |
+//       //   ((uint32_t)v2 << 8) |
+//       //   ((uint32_t)v3 << 16) |
+//       //   ((uint32_t)v4 << 24);
+//       //   float f = *(float *)&bits;
+//       //   acc += f;
         
-      // }else{
+//       // }else{
 
-      //   acc += *in;
-      // }
-      in++;
-    }
-    for(int32_t l = 0; l < output_per_iteration_size; l++){
-      *out = acc;
-      out++;
-    }
+//       //   acc += *in;
+//       // }
+//       in++;
+//     }
+//     for(int32_t l = 0; l < output_per_iteration_size; l++){
+//       *out = acc;
+//       out++;
+//     }
 
-  }
-  event1();
-}
+//   }
+//   event1();
+// }
 extern "C" {
 
 // #if BIT_WIDTH == 8
@@ -156,14 +156,14 @@ void passThroughLine_float_3(float *in, float *out, int32_t lineWidth) {
   passThrough_simple<float>( in, out, lineWidth);
 }
 
-void accum_float_value(float *in, float *out, 
-  const int32_t in_offset,  const int32_t out_offset,
-  const int32_t iteration_size, const int32_t input_size, const int32_t output_size
-  // uint32_t *debug_input
-){
-  accumValue<float>(in,out, in_offset, out_offset,
-     iteration_size, input_size,output_size);
-}
+// void accum_float_value(float *in, float *out, 
+//   const int32_t in_offset,  const int32_t out_offset,
+//   const int32_t iteration_size, const int32_t input_size, const int32_t output_size
+//   // uint32_t *debug_input
+// ){
+//   accumValue<float>(in,out, in_offset, out_offset,
+//      iteration_size, input_size,output_size);
+// }
 
 
 

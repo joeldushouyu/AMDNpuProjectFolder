@@ -350,11 +350,14 @@ int main(int argc, const char *argv[]) {
     uint32_t C1_SWD_matrix_index = 0;
 
 
-    for (int i = 0, n = std::min(input_iteration_size, 16); i < n; ++i) {
-        // build the 32‐bit pattern we want
-        uint32_t bits = static_cast<uint32_t>(i);
-        // bit_cast that into a float (so its bit‐pattern becomes exactly 'bits')
-        in_0[i] = std::bit_cast<float>(bits);
+    for (int i = 0, n = INPUT_SIZE*  ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i < n; ++i) {
+        // // build the 32‐bit pattern we want
+        // uint32_t bits = static_cast<uint32_t>(i);
+        // // bit_cast that into a float (so its bit‐pattern becomes exactly 'bits')
+        // in_0[i] = std::bit_cast<float>(bits);
+
+
+        in_0[i] = i;
     }
   
     
@@ -367,31 +370,31 @@ int main(int argc, const char *argv[]) {
         trace_res.sync_to_device();
     }
 
-    int C1_SWD_debug_mat_count = 0;
-    for(int i = 0; i <   ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
-        if(i  <  C1_DSW_BUFFER_SIZE){
-            out_ref_0[i] = y_ref_col[i];
-        }
-        else{
-            out_ref_0[i ] = 0;
-        }
-    }
-
-    // // generate out_ref_0
-    // int32_t in_offset = 0;
-    // int32_t out_offset = 0; 
-    // for(int i = 0; i < iteration_step_per_ping_pong_buffer* ping_pong_buffer_iteration; i++){
-    //     float acc = 0;
-    //     for(int k = 0; k < input_size;k ++){
-    //         acc += in_0[in_offset];
-    //         in_offset++;
+    // int C1_SWD_debug_mat_count = 0;
+    // for(int i = 0; i <   ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
+    //     if(i  <  C1_DSW_BUFFER_SIZE){
+    //         out_ref_0[i] = y_ref_col[i];
     //     }
-    //     for(int l = 0; l < y_size; l++ ){
-    //         out_ref_0[out_offset] = acc;
-    //         out_offset++;
+    //     else{
+    //         out_ref_0[i ] = 0;
     //     }
-
     // }
+
+    // generate out_ref_0
+    int32_t in_offset = 0;
+    int32_t out_offset = 0; 
+    for(int i = 0; i < ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
+        float acc = 0;
+        for(int k = 0; k < INPUT_SIZE;k ++){
+            acc += in_0[in_offset];
+            in_offset++;
+        }
+        for(int l = 0; l < Y_SIZE; l++ ){
+            out_ref_0[out_offset] = acc;
+            out_offset++;
+        }
+
+    }
 
 
     auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
@@ -445,11 +448,11 @@ int main(int argc, const char *argv[]) {
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
     }
-    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f, C1_DSW_BUFFER_SIZE );
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f );
     if(pass==false){
         std::cout << "FAil stage2" <<std::endl;
     }
-    for (size_t i = 0; i < C1_DSW_BUFFER_SIZE; i++) {
+    for (size_t i = 0; i < out_ref_0.size(); i++) {
         std::cout << std::scientific      // Use exponential notation
                   << std::setprecision(6) // Show 2 digits after decimal
                   << "out_0[" << i << "] = " << out_0[i]

@@ -64,7 +64,7 @@ try:
         print(f"State Size: {state_size}")
         print(f"Output Size: {output_size}")
         
-        total_switch_size = 2**(switch_size + diode_size)
+        number_of_switch_diode_states = 2**(switch_size + diode_size)
         
         # For each diode, the matrix is      3*(diode_number) x (state_size+u_size)
         #NOTE: the host should already add (u_size) of column concat with C_diode_impulse_sw, if not memory reordering is not possible with constant stride in dma
@@ -84,11 +84,21 @@ try:
         A_B_C_D_mat_size = _A_B_C_D_mat_row * _A_B_C_D_mat_col
         
         _len_of_switch_size = (custom_ceil(switch_size+diode_size,32)//32 )   # number of 4byte(float) use for sending external switch for each iteration
+        
+        assert _len_of_switch_size == 1 # something could be way off when takes more than one float
         len_of_input_for_each_iteration = u_size+ _len_of_switch_size
         
-        buffer_size_of_switch_diode = total_switch_size*switch_diode_mat_size
-        buffer_A_B_C_D_size = total_switch_size * A_B_C_D_mat_size
-        buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode +buffer_A_B_C_D_size )
+        buffer_size_of_switch_diode = number_of_switch_diode_states*switch_diode_mat_size
+        buffer_A_B_C_D_size = number_of_switch_diode_states * A_B_C_D_mat_size
+        
+        # buffer size for intermediate results
+        buffer_size_of_C1_DSW_mat_res= (3*diode_size )*4 # float use 4 byte
+        buffer_size_of_A_B_mat_res = ( state_size  )*4 # buffer_size for x_next
+        buffer_size_of_x_u_cur = (state_size + u_size) * 4 # store current x_cur and u(input)
+        buffer_size_of_intermediate_C_D_mat_res = (output_size) * 4
+        
+        buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode +buffer_A_B_C_D_size ) \
+            -(buffer_size_of_C1_DSW_mat_res + buffer_size_of_A_B_mat_res +buffer_size_of_x_u_cur + buffer_size_of_intermediate_C_D_mat_res )
         # define a ping pong for it?
         
         _max_iteration_step = int(custom_floor( buffer_size_for_in_out//(len_of_input_for_each_iteration + output_size),2)) #TODO: round down instead?
@@ -122,8 +132,13 @@ try:
             "iteration_step_per_ping_pong_buffer": iteration_step_per_buffer,
             "buffer_size_of_in_ping_poing": buffer_size_of_in_ping_pong,
             "buffer_size_of_out_ping_pong": buffer_size_of_out_ping_pong,
-            "ping_pong_buffer_iteration": ping_pong_buffer_iteration
+            "ping_pong_buffer_iteration": ping_pong_buffer_iteration,
             
+            "buffer_size_of_C1_DSW_mat_res": buffer_size_of_C1_DSW_mat_res,
+            "buffer_size_of_A_B_mat_res": buffer_size_of_A_B_mat_res,
+            "buffer_size_of_x_u_cur": buffer_size_of_x_u_cur,
+            "buffer_size_of_intermediate_C_D_mat_res": buffer_size_of_intermediate_C_D_mat_res,
+            "number_of_switch_diode_states":number_of_switch_diode_states
         }            
         with open("final_config.json","w") as outfile:
             json.dump( extracted_Data, outfile, indent=4)

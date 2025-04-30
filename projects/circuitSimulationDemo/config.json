@@ -1,5 +1,5 @@
 {
-    "trace_size": 0,
+    "trace_size": 8192,
     "verbose": true,
     "simulate_end_time": 4e-3,
     "switch_size": 2,

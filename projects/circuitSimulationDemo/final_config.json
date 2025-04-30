@@ -1,5 +1,5 @@
 {
-    "trace_size": 0,
+    "trace_size": 8192,
     "state_size": 6,
     "u_size": 1,
     "y_size": 14,
@@ -15,8 +15,13 @@
     "A_B_C_D_buffer_size": 3808,
     "input_switch_size": 1,
     "input_size": 2,
-    "iteration_step_per_ping_pong_buffer": 364,
-    "buffer_size_of_in_ping_poing": 728,
-    "buffer_size_of_out_ping_pong": 5096,
-    "ping_pong_buffer_iteration": 4
+    "iteration_step_per_ping_pong_buffer": 359,
+    "buffer_size_of_in_ping_poing": 718,
+    "buffer_size_of_out_ping_pong": 5026,
+    "ping_pong_buffer_iteration": 4,
+    "buffer_size_of_C1_DSW_mat_res": 24,
+    "buffer_size_of_A_B_mat_res": 24,
+    "buffer_size_of_x_u_cur": 28,
+    "buffer_size_of_intermediate_C_D_mat_res": 56,
+    "number_of_switch_diode_states": 16
 }

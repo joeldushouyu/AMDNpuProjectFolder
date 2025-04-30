@@ -111,13 +111,18 @@ def single_mat_vect_mult():
     A_B_C_D_col_size = extracted_data.get("A_B_C_D_col_size")
     A_B_C_D_matrix_size = extracted_data.get("A_B_C_D_matrix_size")
     A_B_C_D_buffer_size = extracted_data.get("A_B_C_D_buffer_size")
-    input_switch_size = extracted_data.get("input_switch_size")
+    input_switch_size = extracted_data.get("input_switch_size") # float number it takes for updating external switches in each input iteration
     input_size = extracted_data.get("input_size")
     iteration_step_per_ping_pong_buffer = extracted_data.get("iteration_step_per_ping_pong_buffer")
     buffer_size_of_in_ping_pong = extracted_data.get("buffer_size_of_in_ping_poing")
     buffer_size_of_out_ping_pong = extracted_data.get("buffer_size_of_out_ping_pong")
     ping_pong_buffer_iteration = extracted_data.get("ping_pong_buffer_iteration")
 
+    buffer_size_of_C1_DSW_mat_res:int = extracted_data.get("buffer_size_of_C1_DSW_mat_res")
+    buffer_size_of_A_B_mat_res  = extracted_data.get("buffer_size_of_A_B_mat_res")
+    buffer_size_of_x_u_cur = extracted_data.get("buffer_size_of_x_u_cur")
+    buffer_size_of_intermediate_C_D_mat_res  = extracted_data.get("buffer_size_of_intermediate_C_D_mat_res")
+    number_of_switch_diode_states = extracted_data.get("number_of_switch_diode_states")
     
     dtype_in = np.dtype[np.float32]
     dtype_out = np.dtype[np.float32]
@@ -127,7 +132,7 @@ def single_mat_vect_mult():
     def device_body():
 
         
-        total_switch_size = 2**(switch_size + diode_size)
+
    
         # Tile declarations
         ShimTile_0 = tile(0,0)
@@ -140,16 +145,48 @@ def single_mat_vect_mult():
         in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong*2, ), dtype_in]
         out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong*2, ), dtype_out]
 
-        
+        C1_DSW_mat_res_ty = np.ndarray[ (buffer_size_of_C1_DSW_mat_res,), dtype_in ]
+        A_B_mat_res_ty = np.ndarray[ (buffer_size_of_A_B_mat_res,), dtype_in]
+        X_U_Cur_ty = np.ndarray[ (buffer_size_of_x_u_cur,), dtype_in]
+        C_D_mat_res_ty =np.ndarray[ (buffer_size_of_intermediate_C_D_mat_res,), dtype_in] 
         #NOTE: mem_bank flag seem not working anymore after Tile() is configure to basic-sequential address mode
+        
+
+        C1_DSW_mat_res_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(C1_DSW_mat_res_ty),
+                       sym_name="C1_DSW_mat_res_buffer", address=1024) # 1024 for stack
+        ]
+        A_B_mat_res_buffer= [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(A_B_mat_res_ty),
+                       sym_name="A_B_mat_res_ty", address=1024+ buffer_size_of_C1_DSW_mat_res
+                       )
+        ]
+        X_U_cur_buffer=[
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(X_U_Cur_ty),
+                       sym_name="X_U_cur_buffer", address=1024+ buffer_size_of_C1_DSW_mat_res + buffer_size_of_A_B_mat_res
+                       )
+        ]
+        C_D_mat_res_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(C_D_mat_res_ty),
+                       sym_name="C_D_mat_res_buffer", address=1024+buffer_size_of_C1_DSW_mat_res + buffer_size_of_A_B_mat_res + buffer_size_of_x_u_cur
+                       )
+        ]
+        
+        
+        
+        
         in_buffer = [
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", address=1024), # 1024 offset, reserve for stack
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty),
+                     sym_name=f"in_buffer_{0}",
+                     address=1024+buffer_size_of_C1_DSW_mat_res\
+                         + buffer_size_of_A_B_mat_res + buffer_size_of_x_u_cur +\
+                             buffer_size_of_intermediate_C_D_mat_res), # 1024 offset, reserve for stack
 
         ]
         in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2, sym_name="in_buffer_p_lock")
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0, sym_name="in_buffer_c_lock")
         
-        out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4) # 4 byte per float
+        out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4) # 4 byte per float (put it at the very end)
         out_buffer = [
             buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", address=out_buffer_address ), # 
         ]        
@@ -209,7 +246,7 @@ def single_mat_vect_mult():
             state_size= state_size,
             output_size=y_size,
             u_size=u_size,
-            total_sw_size=total_switch_size
+            total_sw_size=number_of_switch_diode_states
         )
         # print(A_B_C_D_num_for_balance_cutoff)
         mid_offset = A_B_C_D_num_for_balance_cutoff *(state_size+2*y_size)*(state_size+u_size )
@@ -262,9 +299,11 @@ def single_mat_vect_mult():
                 
         CT_0_2_main_func = external_func("CT_main", inputs=[
             in_data_ty, out_data_ty,
-            np.int32, np.int32, np.int32,
+            np.int32, np.int32, 
             np.int32, np.int32, np.int32, np.int32,
-            switch_diode_matrix_ty
+            switch_diode_matrix_ty, 
+            
+            C1_DSW_mat_res_ty, A_B_mat_res_ty, X_U_Cur_ty, C_D_mat_res_ty
         ])
 
         @core(ComputeTile_0_2, "mainKernel.o")
@@ -272,9 +311,11 @@ def single_mat_vect_mult():
             # for _ in range_(sys.maxsize):
             CT_0_2_main_func(
                 in_buffer[0], out_buffer[0],
-                constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong), constant(iteration_step_per_ping_pong_buffer),
+                constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong),
                 constant(8),constant(9),constant(10),constant(11),
-                switch_diode_buffer[0]
+                switch_diode_buffer[0],
+                
+                C1_DSW_mat_res_buffer[0], A_B_mat_res_buffer[0], X_U_cur_buffer[0], C_D_mat_res_buffer[0]
                 
             )
 
@@ -362,7 +403,7 @@ def single_mat_vect_mult():
             custom_npu_dma_memcpy_nd(
                 metadata="in_SHM_CT_0_2_0",
                 bd_id=1,
-                mem=A, offsets=[0,0,0,0], sizes= [1, total_switch_size  , C1_DSW_col_size, C1_DSW_row_size ],
+                mem=A, offsets=[0,0,0,0], sizes= [1, number_of_switch_diode_states  , C1_DSW_col_size, C1_DSW_row_size ],
                 strides=[0,  C1_DSW_matrix_size ,1,C1_DSW_col_size],  
                 packet_id=6,
                 packet_type=0                  
@@ -380,7 +421,7 @@ def single_mat_vect_mult():
             assert in_0_size % A_B_C_D_col_size == 0
             if (in_1_size-data_flow_in_size > 0):
                 custom_npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=3, mem=A, offsets=[0, 0,  0,  in_0_size //A_B_C_D_col_size  ], #TODO: assert is okay for it
-                                        sizes= [1, total_switch_size-A_B_C_D_num_for_balance_cutoff , A_B_C_D_col_size, A_B_C_D_row_size],
+                                        sizes= [1, number_of_switch_diode_states-A_B_C_D_num_for_balance_cutoff , A_B_C_D_col_size, A_B_C_D_row_size],
                                         strides=[0,   A_B_C_D_matrix_size   ,1, A_B_C_D_col_size],
                                         packet_id=8, packet_type=0)
 
