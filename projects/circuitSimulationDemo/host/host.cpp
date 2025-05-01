@@ -97,16 +97,12 @@ static void convertMatrix(
 // has been converted into column-major order.
 buffer<float> transform_to_column_major_order(
     const buffer<float> &in,
-    int32 diode_size,
-    int32 state_size,
-    int32 input_size,
-    int32 output_size,
     int32 switch_size
 ) {
-    const int32 m1_rows = 3 * diode_size;
-    const int32 m1_cols = state_size + input_size;
-    const int32 m2_rows = state_size + 2 * output_size;
-    const int32 m2_cols = state_size + input_size;
+    const int32 m1_rows =  C1_DSW_ROW_SIZE;
+    const int32 m1_cols = C1_DSW_COL_SIZE;
+    const int32 m2_rows = A_B_C_D_ROW_SIZE;
+    const int32 m2_cols = A_B_C_D_COL_SIZE;
 
     const std::size_t mat1_elems = static_cast<std::size_t>(m1_rows) * m1_cols;
     const std::size_t mat2_elems = static_cast<std::size_t>(m2_rows) * m2_cols;
@@ -198,15 +194,11 @@ static void debug_print_reorder(
 void debug_inspect_all(
     const buffer<float>& row_buf,
     const buffer<float>& col_buf,
-    int diode_size,
-    int state_size,
-    int input_size,
-    int output_size,
     int switch_size
 ) {
-    int m1r = 3*diode_size,        m1c = state_size + input_size;
-    int m2r = state_size + 2*output_size, 
-        m2c = state_size + input_size;
+    int m1r = C1_DSW_ROW_SIZE,        m1c = C1_DSW_COL_SIZE;
+    int m2r = A_B_C_D_ROW_SIZE, 
+        m2c = A_B_C_D_COL_SIZE;
     std::size_t elems1 = std::size_t(m1r)*m1c;
     std::size_t elems2 = std::size_t(m2r)*m2c;
 
@@ -280,7 +272,7 @@ int main(int argc, const char *argv[]) {
     // answer 
     
     // transform y_ref_0 to colum major
-    buffer<float> y_ref_col = transform_to_column_major_order( w_0, DIODE_SIZE, STATE_SIZE, U_SIZE, Y_SIZE, std::pow(2, SWITCH_SIZE + DIODE_SIZE) );
+    buffer<float> y_ref_col = transform_to_column_major_order( w_0,  std::pow(2, SWITCH_SIZE + DIODE_SIZE) );
 
     uint32_t C1_SWD_matrix_index = 0;
 
@@ -376,11 +368,10 @@ int main(int argc, const char *argv[]) {
     //               << std::endl;
     // }
 
-    // debug_inspect_all(
-    //     y_ref_0, y_0,
-    //     diode_size, state_size, u_size, output_size,
-    //     int(std::pow(2, switch_diode_size))
-    // );
+    debug_inspect_all(
+        w_0, y_0, 
+        std::pow(2, SWITCH_SIZE + DIODE_SIZE)
+    );
 
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;

@@ -69,14 +69,14 @@ try:
         # For each diode, the matrix is      3*(diode_number) x (state_size+u_size)
         #NOTE: the host should already add (u_size) of column concat with C_diode_impulse_sw, if not memory reordering is not possible with constant stride in dma
         C1_DSW_col_size = (state_size+u_size) 
-        C1_DSW_row_size =  3* diode_size
+        C1_DSW_row_size =   custom_ceil(3* diode_size,16)
         switch_diode_mat_size =  C1_DSW_col_size* C1_DSW_row_size
         # Iteration matrix consist of A_with_dep, B_with_dep, C_imp, C_natual, D_imp, D_natual
 
         # A_with_dep and B_with_dep can be combined into one matrix of size (state_size x (state_size+u_size))
         # And C_impulse_mat, D_impulse_mat can be combine into one matrix with of size (Y_size x(state_size + u_size))
         # and C_non_impulse_matrix, D_non_impulse_matrix can be combined into another matrix of size (Y_size x (state_size+u_size))
-        _A_B_C_D_mat_row = ( state_size + 2*output_size)
+        _A_B_C_D_mat_row =  custom_ceil( state_size + 2*output_size, 16)
         _A_B_C_D_mat_col = (state_size + u_size)
         # _len_of_A_B_matrix = state_size *( state_size+u_size)
         # _len_of_C_imp_D_imp = (output_size * (state_size+u_size) )

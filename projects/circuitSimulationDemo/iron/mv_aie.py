@@ -135,7 +135,7 @@ def single_mat_vect_mult():
         # ComputeTile_0_2 = tile(0,2)        
         # ComputeTile_0_2 = tile(0,2, allocation_scheme="bank-aware")        
         ComputeTile_0_2 = tile(0,2, allocation_scheme="basic-sequential")
-        ComputeTile_1_2 = tile(1,2)
+        ComputeTile_1_2 = tile(1,2, allocation_scheme="basic-sequential")
 
         in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong*2, ), dtype_in]
         out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong*2, ), dtype_out]
@@ -191,13 +191,13 @@ def single_mat_vect_mult():
 
         # Debug Buffer
         switch_diode_buffer_debug_out = [
-          buffer(tile=ComputeTile_1_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer_debug") 
+          buffer_raw(tile=ComputeTile_1_2, buffer=try_convert_np_type_to_mlir_type(switch_diode_matrix_ty), sym_name=f"switch_diode_buffer_debug", address=1024) 
         ]
         switch_diode_debug_prod_lock = lock(ComputeTile_1_2, lock_id= 0,init=1, sym_name="switch_diode_debug_prod_lock" )
         switch_diode_debug_con_lock = lock(ComputeTile_1_2, lock_id=1, init=0, sym_name="switch_diode_debug_con_lock")
 
         A_B_C_D_debug_buffer = [
-            buffer(tile=ComputeTile_1_2, datatype=A_B_C_D_ty, name="A_B_C_D_debug_buffer" )
+            buffer_raw(tile=ComputeTile_1_2, buffer=try_convert_np_type_to_mlir_type(A_B_C_D_ty), sym_name="A_B_C_D_debug_buffer", address = 1024+ C1_DSW_buffer_size*4 )
         ]
         A_B_C_D_debug_prod_lock = lock(ComputeTile_1_2, lock_id=2, init=1)
         A_B_C_D_debug_con_lock = lock(ComputeTile_1_2, lock_id=3, init=0)        
@@ -362,7 +362,8 @@ def single_mat_vect_mult():
             custom_npu_dma_memcpy_nd(
                 metadata="in_SHM_CT_0_2_0",
                 bd_id=1,
-                mem=A, offsets=[0,0,0,0], sizes= [1, total_switch_size  , C1_DSW_col_size, C1_DSW_row_size ],
+                mem=A, offsets=[0,0,0,0], 
+                sizes= [1, total_switch_size  , C1_DSW_col_size, C1_DSW_row_size ],
                 strides=[0,  C1_DSW_matrix_size ,1,C1_DSW_col_size],  
                 packet_id=6,
                 packet_type=0                  

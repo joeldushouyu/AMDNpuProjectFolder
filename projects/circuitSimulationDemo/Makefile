@@ -108,10 +108,19 @@ clean:clean_test
 	-@rm -f circuitConfig.h
 
 config_stage:
+	${clean}
+	-@rm -f ./iron/final_config.json
+	-@rm -f ./host/circuitConfig.h
+	-@rm -f ./kernel/circuitConfig.h
+	-@rm -f final_config.json
+	-@rm -f circuitConfig.h
+
 	python generate_config.py 
 	cp final_config.json  ./iron/
 	cp circuitConfig.h ./host/
 	cp circuitConfig.h ./kernel/
+
+
 
 
 kernel: ${KERNEL_OBJS} 
@@ -132,7 +141,7 @@ host: ${HOST_C_TARGET}
 clean_host:
 	-@rm -rf build/host
 
-run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
+run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS} 
 	./${HOST_C_TARGET} | tee out.log
 # compare the generated.txt with the insts, if not the same, say error
 # @if diff -q generated.txt ${INSTS_TARGETS}; then \
