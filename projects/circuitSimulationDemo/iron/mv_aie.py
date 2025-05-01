@@ -85,8 +85,8 @@ def balance_matrix_transfer_case(switch_diode_matrix_size, buffer_A_B_C_D_size, 
 # def custom_floor(x, multiplier):
 #   return math.floor(x / multiplier) * multiplier
 
-# def custom_ceil(x, multiplier):
-#   return math.ceil(x / multiplier) * multiplier
+def custom_ceil(x, multiplier):
+  return math.ceil(x / multiplier) * multiplier
 
 
 
@@ -154,24 +154,26 @@ def single_mat_vect_mult():
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0, sym_name="in_buffer_c_lock")
         offset+= buffer_size_of_in_ping_pong*2*4
         
+        offset = custom_ceil(offset, 64)
+        assert offset %64 == 0
         
-        cur_x_u_ty = np.ndarray[ (buffer_size_of_cur_X_U,), dtype_in ]
-        cur_x_u_buffer = [
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(cur_x_u_ty ), sym_name="cur_x_u_buffer", address=offset)
-        ]
-        offset+= buffer_size_of_cur_X_U*4
+        # cur_x_u_ty = np.ndarray[ (buffer_size_of_cur_X_U,), dtype_in ]
+        # cur_x_u_buffer = [
+        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(cur_x_u_ty ), sym_name="cur_x_u_buffer", address=offset)
+        # ]
+        # offset+= buffer_size_of_cur_X_U*4
         
-        C1_DSW_mat_res_ty = np.ndarray[ (buffer_size_of_C1_DSW_mat_res,), dtype_in]
-        C1_DSW_mat_buffer = [
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(C1_DSW_mat_res_ty), sym_name="C1_DSW_mat_buffer", address=offset)
-        ]
-        offset+= buffer_size_of_C1_DSW_mat_res*4
+        # C1_DSW_mat_res_ty = np.ndarray[ (buffer_size_of_C1_DSW_mat_res,), dtype_in]
+        # C1_DSW_mat_buffer = [
+        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(C1_DSW_mat_res_ty), sym_name="C1_DSW_mat_buffer", address=offset)
+        # ]
+        # offset+= buffer_size_of_C1_DSW_mat_res*4
         
-        A_B_C_D_mat_res_ty = np.ndarray[ (buffer_size_of_A_B_C_D_mat_res, ), dtype_in]
-        A_B_C_D_mat_res_buffer = [
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(A_B_C_D_mat_res_ty), sym_name="A_B_C_D_mat_res_buffer", address=offset)
-        ]
-        offset+= buffer_size_of_A_B_C_D_mat_res*4
+        # A_B_C_D_mat_res_ty = np.ndarray[ (buffer_size_of_A_B_C_D_mat_res, ), dtype_in]
+        # A_B_C_D_mat_res_buffer = [
+        #     buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(A_B_C_D_mat_res_ty), sym_name="A_B_C_D_mat_res_buffer", address=offset)
+        # ]
+        # offset+= buffer_size_of_A_B_C_D_mat_res*4
         
         switch_diode_matrix_ty = np.ndarray[ (C1_DSW_buffer_size, ), dtype_in]
         switch_diode_buffer = [
@@ -180,7 +182,8 @@ def single_mat_vect_mult():
         switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=1, sym_name="switch_diode_prod_lock")
         switch_diode_con_lock = lock(ComputeTile_0_2, lock_id=1, init=0, sym_name="switch_diode_con_lock")
         offset+= C1_DSW_buffer_size*4
-
+        assert offset %64 == 0
+        
         pass_through_float_diode_matrix = external_func( "passThroughLine_float_0", inputs=[
           switch_diode_matrix_ty, switch_diode_matrix_ty, np.int32
         ] )
@@ -193,6 +196,7 @@ def single_mat_vect_mult():
         A_B_C_D_prod_lock = lock(ComputeTile_0_2, lock_id=2, init=2, sym_name="A_B_C_D_prod_lock")
         A_B_C_D_con_lock = lock(ComputeTile_0_2, lock_id=3, init=0, sym_name="A_B_C_D_con_lock")
         offset += A_B_C_D_buffer_size*4
+        assert offset %64 == 0
         
         pass_through_float_A_B_C_D_matrix =external_func(  "passThroughLine_float_1", inputs=[
             A_B_C_D_ty, A_B_C_D_ty, np.int32
@@ -205,9 +209,8 @@ def single_mat_vect_mult():
         ]        
         out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=2)
         out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
-                
-        
-    
+
+        assert offset+buffer_size_of_out_ping_pong*2*4 <= (64*1024)  # total of less than 64kB
 
         # Debug Buffer
         switch_diode_buffer_debug_out = [

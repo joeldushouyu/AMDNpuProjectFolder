@@ -27,197 +27,12 @@ namespace po = boost::program_options;
 
 #include "circuitConfig.h"
 
+#include "host_helper.hpp"
+
 using int32 = std::int32_t;
-bool are_results_close(
-    buffer<float>& y_cpu,
-    buffer<float>& y_npu,
-    float rtol = 1e-5f,  // Relative tolerance (1e-5 = 0.001%)
-    float atol = 1e-6f,   // Absolute tolerance (1e-6 = 0.0001%),
-    uint32_t size_to_check = 0
-) {
-    // First check vector sizes match
-    if (y_cpu.size() != y_npu.size()) {
-        return false;
-    }
-    if(size_to_check == 0){
-        size_to_check =  y_cpu.size();
-    }
-
-    // Component-wise comparison
-    for (size_t i = 0; i < size_to_check; ++i) {
-        const float a = y_cpu[i];
-        const float b = y_npu[i];
-        const float abs_diff = std::fabs(a - b);
-
-        // Calculate acceptable tolerance threshold
-        const float threshold = atol + rtol * std::max(std::fabs(a), std::fabs(b));
-
-        // Early exit if any element fails
-        if (abs_diff > threshold) {
-            std::cout << "Failed at index" << i << std::endl;
-            return false;
-        }
-    }
-
-    return true;
-}
-buffer<float> test_func(){
-    buffer<float> w(100);
-    for (int i = 0; i < 100; i++){
-        w[i] = i;
-    }
-    return w;
-}
 
 
-// Helper function to convert a single matrix slice from row-major to column-major
-static void convertMatrix(
-    const buffer<float> &in,
-    buffer<float> &out,
-    std::size_t in_offset,
-    std::size_t &out_offset,
-    int32 rows,
-    int32 cols
-) {
-    for (int32 c = 0; c < cols; ++c) {
-        for (int32 r = 0; r < rows; ++r) {
-            // Correct index: row-major input to column-major output
-            out[out_offset++] = in[in_offset + r * cols + c];
-        }
-    }
-}
-// Transforms a flattened array of matrices from row-major to column-major order.
-// Structure of `in`:
-// 1) First block: switch_size repetitions of matrices of size
-//    (3 * diode_size) rows x (state_size + input_size) cols.
-// 2) Second block: switch_size repetitions of matrices of size
-//    (state_size + 2 * output_size) rows x (state_size + input_size) cols.
-// All matrices in `in` are stored in row-major order.
-// This function returns a new buffer where each individual matrix
-// has been converted into column-major order.
-buffer<float> transform_to_column_major_order(
-    const buffer<float> &in,
-    int32 switch_size
-) {
-    const int32 m1_rows =  C1_DSW_ROW_SIZE;
-    const int32 m1_cols = C1_DSW_COL_SIZE;
-    const int32 m2_rows = A_B_C_D_ROW_SIZE;
-    const int32 m2_cols = A_B_C_D_COL_SIZE;
 
-    const std::size_t mat1_elems = static_cast<std::size_t>(m1_rows) * m1_cols;
-    const std::size_t mat2_elems = static_cast<std::size_t>(m2_rows) * m2_cols;
-    const std::size_t expected_size = static_cast<std::size_t>(switch_size) * (mat1_elems + mat2_elems);
-
-    if (in.size() != expected_size) {
-        throw std::invalid_argument("Input buffer size does not match expected dimensions");
-    }
-
-    buffer<float> out(expected_size);
-    std::size_t in_offset = 0;
-    std::size_t out_offset = 0;
-
-    // Process first block matrices
-    for (int32 s = 0; s < switch_size; ++s) {
-        convertMatrix(in, out, in_offset, out_offset, m1_rows, m1_cols);
-        in_offset += mat1_elems;
-    }
-
-    // Process second block matrices
-    for (int32 s = 0; s < switch_size; ++s) {
-        convertMatrix(in, out, in_offset, out_offset, m2_rows, m2_cols);
-        in_offset += mat2_elems;
-    }
-
-    return out;
-}
-
-void print_matrices_side_by_side(
-    const buffer<float>& row_major,
-    const buffer<float>& col_major,
-    int32 rows,
-    int32 cols
-) {
-    for (int32 r = 0; r < rows; ++r) {
-        // Print row-major row
-        for (int32 c = 0; c < cols; ++c) {
-            printf("%8.3f ", row_major[r * cols + c]);
-        }
-
-        printf("    ||    ");
-
-        // Print column-major row
-        for (int32 c = 0; c < cols; ++c) {
-            printf("%8.3f ", col_major[c * rows + r]);
-        }
-
-        printf("\n");
-    }
-}
-
-static void debug_print_reorder(
-    const buffer<float>& row_buf,
-    const buffer<float>& col_buf,
-    std::size_t row_off,
-    std::size_t col_off,
-    int        rows,
-    int        cols,
-    float      eps = 1e-6f    // tolerance
-) {
-    assert(row_buf.size() >= row_off + std::size_t(rows)*cols);
-    assert(col_buf.size() >= col_off + std::size_t(rows)*cols);
-
-    printf(" (r,c) | orig_idx →  val  || new_idx →  val   | diff    \n");
-    printf("-------+------------------++-------------------+---------\n");
-    for (int r = 0; r < rows; ++r) {
-        for (int c = 0; c < cols; ++c) {
-            std::size_t orig_idx = row_off + r*cols + c;
-            std::size_t new_idx  = col_off + c*rows + r;
-            float a = row_buf[orig_idx];
-            float b = col_buf[new_idx];
-            float diff = std::fabs(a - b);
-            bool  bad  = diff > eps;
-
-            printf(" (%2d,%2d) | %4zu → %8.3f || %4zu → %8.3f | %8.3e %s\n",
-                   r, c,
-                   orig_idx, a,
-                   new_idx,  b,
-                   diff,
-                   bad ? "<-- mismatch" : "");
-        }
-    }
-    printf("\n");
-}
-
-// ----------------------------------------------------------------------------
-// Walk through *all* your slices in the two blocks and call debug_print_reorder
-// ----------------------------------------------------------------------------
-void debug_inspect_all(
-    const buffer<float>& row_buf,
-    const buffer<float>& col_buf,
-    int switch_size
-) {
-    int m1r = C1_DSW_ROW_SIZE,        m1c = C1_DSW_COL_SIZE;
-    int m2r = A_B_C_D_ROW_SIZE, 
-        m2c = A_B_C_D_COL_SIZE;
-    std::size_t elems1 = std::size_t(m1r)*m1c;
-    std::size_t elems2 = std::size_t(m2r)*m2c;
-
-    std::size_t row_off = 0, col_off = 0;
-    for (int s = 0; s < switch_size; ++s) {
-        printf("=== slice %d, BLOCK 1 (%dx%d) ===\n", s, m1r, m1c);
-        debug_print_reorder(row_buf, col_buf, row_off, col_off, m1r, m1c);
-        row_off += elems1;
-        col_off += elems1;
-    }
-    for (int s = 0; s < switch_size; ++s) {
-        printf("=== slice %d, BLOCK 2 (%dx%d) ===\n", s, m2r, m2c);
-        debug_print_reorder(row_buf, col_buf, row_off, col_off, m2r, m2c);
-        row_off += elems2;
-        col_off += elems2;
-    }
-}
-
-void linear(buffer<dtype_out>& y, buffer<dtype_in>& w, buffer<dtype_in>& x);
 
 int main(int argc, const char *argv[]) {
     // Fix the seed to ensure reproducibility in CI.
@@ -278,17 +93,29 @@ int main(int argc, const char *argv[]) {
     uint32_t C1_SWD_matrix_index = 0;
 
 
-    // for (int i = 0, n = std::min(input_iteration_size, 16); i < n; ++i) {
-    //     // build the 32‐bit pattern we want
-    //     uint32_t bits = static_cast<uint32_t>(i);
-    //     // bit_cast that into a float (so its bit‐pattern becomes exactly 'bits')
-    //     in_0[i] = std::bit_cast<float>(bits);
-    // }
-  
-    for(int i = 0; i < input_iteration_size; i++){
-        in_0[i] =i;
+    for (int i = 0; i < input_iteration_size; i+= INPUT_SIZE_PER_ITERATION) {
+
+        for(int k = 0; k < INPUT_SIZE_PER_ITERATION; k++){
+            if(k +1 == INPUT_SIZE_PER_ITERATION){
+                        // build the 32‐bit pattern we want
+                uint32_t bits = static_cast<uint32_t>(i);
+                // bit_cast that into a float (so its bit‐pattern becomes exactly 'bits')
+                in_0[i+k] = std::bit_cast<float>(bits);
+            }else{
+                in_0[i+k] = i+10;
+            }
+        }
+
     }
+  
+    // for(int i = 0; i < input_iteration_size; i++){
+    //     in_0[i] =i;
+    // }
     
+    for(int i = 0; i < 10; i++){
+        std::cout << in_0[i]<<std::endl;
+    }
+
 
     matrix_in.sync_to_device();
     in_0.sync_to_device();
@@ -298,31 +125,55 @@ int main(int argc, const char *argv[]) {
         trace_res.sync_to_device();
     }
 
-    // int C1_SWD_debug_mat_count = 0;
-    // for(int i = 0; i <   ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
-    //     if(i  <  C1_DSW_BUFFER_SIZE){
-    //         out_ref_0[i] = y_ref_col[i];
+
+
+    // // generate out_ref_0
+    // int32_t in_offset = 0;
+    // int32_t out_offset = 0; 
+    // for(int i = 0; i < ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
+    //     float acc = 0;
+    //     for(int k = 0; k < INPUT_SIZE_PER_ITERATION;k ++){
+    //         acc += in_0[in_offset];
+    //         in_offset++;
     //     }
-    //     else{
-    //         out_ref_0[i ] = 0;
+    //     for(int l = 0; l < OUTPUT_SIZE_PER_ITERATION; l++ ){
+    //         out_ref_0[out_offset] = acc;
+    //         out_offset++;
     //     }
+
     // }
 
     // generate out_ref_0
-    int32_t in_offset = 0;
-    int32_t out_offset = 0; 
-    for(int i = 0; i < ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
-        float acc = 0;
-        for(int k = 0; k < INPUT_SIZE_PER_ITERATION;k ++){
-            acc += in_0[in_offset];
-            in_offset++;
-        }
-        for(int l = 0; l < OUTPUT_SIZE_PER_ITERATION; l++ ){
-            out_ref_0[out_offset] = acc;
-            out_offset++;
+
+    // only check partial result for now
+    float* input_ptr = in_0.data();
+    float* ref_res = out_ref_0.data();
+    float *C1_DSW_ptr = matrix_out_ref_col.data();
+    for(int i = 0; i < TOTAL_SWITCH_DIODE_STATE*2; i++){
+
+        float x[C1_DSW_COL_SIZE] = {0};
+        
+        for(int l = 0; l < U_SIZE; l++){
+            x[STATE_SIZE + l] = *input_ptr++;
         }
 
+        std::vector<float>res  = matvec_mul_col_major(
+            C1_DSW_ptr + (i*C1_DSW_MATRIX_SIZE),x, 
+            C1_DSW_ROW_SIZE,
+            C1_DSW_COL_SIZE 
+        );
+
+        // STORE the reference result
+        for(auto v :res){
+            *ref_res++= v;
+        }
+        input_ptr++; // the external switch bit that is not used for now
+
+
     }
+
+
+
 
 
     auto run_0 = npu_instance.create_run(app_id_0, matrix_in.bo(), matrix_out_col_major.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
@@ -359,33 +210,26 @@ int main(int argc, const char *argv[]) {
 
 
     bool pass = are_results_close(matrix_out_col_major, matrix_out_ref_col, 1e-4f, 1e-3f);
-    // for (size_t i = 0; i < y_0.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "y[" << i << "] = " << y_0[i]
-    //               << " ?= y_ref[" << i << "] = " << y_ref_0[i]
-    //               << std::endl;
-    // }
 
     // debug_inspect_all(
-    //     w_0, y_0, 
+    //     matrix_in, matrix_out_col_major, 
     //     std::pow(2, SWITCH_SIZE + DIODE_SIZE)
     // );
 
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
     }
-    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f );
+    pass &= are_results_close( out_0, out_ref_0,1e-4f, 1e-3f, 2* TOTAL_SWITCH_DIODE_STATE *  C1_DSW_COL_SIZE  );
     if(pass==false){
         std::cout << "FAil stage2" <<std::endl;
     }
-    // for (size_t i = 0; i < out_0.size(); i++) {
-    //     std::cout << std::scientific      // Use exponential notation
-    //               << std::setprecision(6) // Show 2 digits after decimal
-    //               << "out_0[" << i << "] = " << out_0[i]
-    //               << " ?= out_ref_0[" << i << "] = " << out_ref_0[i]
-    //               << std::endl;
-    // }
+    for (size_t i = 0; i < 32; i++) {
+        std::cout << std::scientific      // Use exponential notation
+                  << std::setprecision(6) // Show 2 digits after decimal
+                  << "out_0[" << i << "] = " << out_0[i]
+                  << " ?= out_ref_0[" << i << "] = " << out_ref_0[i]
+                  << std::endl;
+    }
 
 
 
@@ -399,16 +243,3 @@ int main(int argc, const char *argv[]) {
     return 0;
 }
 
-void linear(buffer<dtype_out>& y, buffer<dtype_in>& w, buffer<dtype_in>& x){
-    int in_features = x.size();
-    int out_features = y.size();
-    assert((in_features * out_features) == w.size());
-    int v = 0;
-    for (int row = 0; row < out_features; row++){
-        dtype_out sum = 0;
-        for (int col = 0; col < in_features; col++){
-            sum = sum + dtype_out(w[v++] * x[col]);
-        }
-        y[row] = sum;
-    }
-}

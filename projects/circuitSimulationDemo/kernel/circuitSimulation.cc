@@ -6,7 +6,7 @@
 
 #include "circuitSimulation.h"
 
-
+#include <aie_api/aie.hpp>
 
 //TODO: define external_switch_number and diode_number as macro?
 

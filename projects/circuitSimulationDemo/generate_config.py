@@ -91,6 +91,8 @@ try:
         buffer_size_of_C1_DSW_mat_res = C1_DSW_row_size
         buffer_size_of_A_B_C_D_mat_res =_A_B_C_D_mat_row
         
+        
+        # note: because load 16 float at a time for vector instruction, need to ensure the address are aligned to 64byte(4*16)
         buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode +buffer_A_B_C_D_size\
             + buffer_size_of_cur_X_U  + buffer_size_of_C1_DSW_mat_res + buffer_size_of_A_B_C_D_mat_res)
         # define a ping pong for it?
