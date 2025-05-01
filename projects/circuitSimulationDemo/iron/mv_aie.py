@@ -58,7 +58,7 @@ from custom_npu_dma_memcpy import generate_packet_attribute
 
 import json
 # npu_dma_memcpy_nd
-def balance_matrix_transfer_case(switch_diode_matrix_size, buffer_A_B_C_D_size, state_size, output_size,u_size,  total_sw_size):
+def balance_matrix_transfer_case(switch_diode_matrix_size, buffer_A_B_C_D_size, A_B_C_D_row_size, A_B_C_D_col_size):
     mid_point = (switch_diode_matrix_size+ buffer_A_B_C_D_size)//2
     
     # Note: the matrix granduality is divided to 2 matrix
@@ -70,7 +70,7 @@ def balance_matrix_transfer_case(switch_diode_matrix_size, buffer_A_B_C_D_size, 
     
     mid_size = (mid_point-switch_diode_matrix_size)
     
-    A_B_C_D_matrix_number_cutoff = mid_size//(  (state_size+2*output_size) *( state_size + u_size) )
+    A_B_C_D_matrix_number_cutoff = mid_size//(  A_B_C_D_row_size *A_B_C_D_col_size )
     
     return   A_B_C_D_matrix_number_cutoff
 
@@ -142,32 +142,24 @@ def single_mat_vect_mult():
 
         
         #NOTE: mem_bank flag seem not working anymore after Tile() is configure to basic-sequential address mode
+        offset = 1024
         in_buffer = [
-          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", address=1024), # 1024 offset, reserve for stack
+          buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(in_data_ty), sym_name=f"in_buffer_{0}", address=offset), # 1024 offset, reserve for stack
 
         ]
         in_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=8, init=2, sym_name="in_buffer_p_lock")
         in_buffer_con_lock = lock(ComputeTile_0_2, lock_id=9, init=0, sym_name="in_buffer_c_lock")
-        
-        out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4) # 4 byte per float
-        out_buffer = [
-            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", address=out_buffer_address ), # 
-        ]        
-        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=2)
-        out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
-                
+        offset+= buffer_size_of_in_ping_pong*2*4
         
         
-
-     
-
+        
         switch_diode_matrix_ty = np.ndarray[ (C1_DSW_buffer_size, ), dtype_in]
         switch_diode_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=switch_diode_matrix_ty, name=f"switch_diode_buffer") 
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(switch_diode_matrix_ty), sym_name=f"switch_diode_buffer", address=offset) 
         ]
         switch_diode_prod_lock =  lock(ComputeTile_0_2, lock_id=0, init=1, sym_name="switch_diode_prod_lock")
         switch_diode_con_lock = lock(ComputeTile_0_2, lock_id=1, init=0, sym_name="switch_diode_con_lock")
-
+        offset+= C1_DSW_buffer_size*4
 
         pass_through_float_diode_matrix = external_func( "passThroughLine_float_0", inputs=[
           switch_diode_matrix_ty, switch_diode_matrix_ty, np.int32
@@ -175,17 +167,27 @@ def single_mat_vect_mult():
 
 
         A_B_C_D_ty = np.ndarray[(A_B_C_D_buffer_size,  ), dtype_in]
-        
         A_B_C_D_buffer = [
-            buffer(tile=ComputeTile_0_2, datatype=A_B_C_D_ty, name="A_B_C_D_buffer")
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(A_B_C_D_ty), sym_name="A_B_C_D_buffer", address=offset)
         ]
-        
         A_B_C_D_prod_lock = lock(ComputeTile_0_2, lock_id=2, init=2, sym_name="A_B_C_D_prod_lock")
         A_B_C_D_con_lock = lock(ComputeTile_0_2, lock_id=3, init=0, sym_name="A_B_C_D_con_lock")
+        offset += A_B_C_D_buffer_size*4
         
         pass_through_float_A_B_C_D_matrix =external_func(  "passThroughLine_float_1", inputs=[
             A_B_C_D_ty, A_B_C_D_ty, np.int32
         ])
+        
+        
+        # out_buffer_address = (64*1024) - (buffer_size_of_out_ping_pong*2*4) # 4 byte per float
+        out_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(out_data_ty), sym_name=f"out_buffer_{0}", address=offset ), # 
+        ]        
+        out_buffer_prod_lock = lock(ComputeTile_0_2, lock_id=10, init=2)
+        out_buffer_con_lock = lock(ComputeTile_0_2, lock_id=11, init=0)
+                
+        
+    
 
         # Debug Buffer
         switch_diode_buffer_debug_out = [
@@ -206,13 +208,11 @@ def single_mat_vect_mult():
         A_B_C_D_num_for_balance_cutoff = balance_matrix_transfer_case(
             switch_diode_matrix_size=C1_DSW_buffer_size,
             buffer_A_B_C_D_size= A_B_C_D_buffer_size,
-            state_size= state_size,
-            output_size=y_size,
-            u_size=u_size,
-            total_sw_size=total_switch_size
+            A_B_C_D_col_size=A_B_C_D_col_size,
+            A_B_C_D_row_size=A_B_C_D_row_size
         )
         # print(A_B_C_D_num_for_balance_cutoff)
-        mid_offset = A_B_C_D_num_for_balance_cutoff *(state_size+2*y_size)*(state_size+u_size )
+        mid_offset = A_B_C_D_num_for_balance_cutoff *(A_B_C_D_row_size)*(A_B_C_D_col_size )
         
         @mem(ComputeTile_0_2)
         def m(block):
