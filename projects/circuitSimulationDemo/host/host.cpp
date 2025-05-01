@@ -251,8 +251,8 @@ int main(int argc, const char *argv[]) {
     int output_iteration_size = BUFFER_SIZE_OF_OUT_PING_PONG * PING_PONG_BUFFER_ITERATION ;
 
     buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
-    buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(in_size, 3, app_id_0);
-    buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(in_size, 4, app_id_0);
+    buffer<dtype_in> matrix_in = npu_instance.create_bo_buffer<dtype_in>(in_size, 3, app_id_0);
+    buffer<dtype_out> matrix_out_col_major = npu_instance.create_bo_buffer<dtype_out>(in_size, 4, app_id_0);
     buffer<dtype_in> in_0 = npu_instance.create_bo_buffer<dtype_in>( input_iteration_size, 5, app_id_0);
     buffer<dtype_out> out_0 = npu_instance.create_bo_buffer<dtype_out>(output_iteration_size, 6, app_id_0);
 
@@ -266,14 +266,14 @@ int main(int argc, const char *argv[]) {
     std::uniform_real_distribution<float> dist(-500.123f, 1000.12333f);  
     buffer<dtype_out> out_ref_0(output_iteration_size);
     for (int i = 0; i < in_size; i++){
-        w_0[i] = i;//dist(gen);
+        matrix_in[i] = i;//dist(gen);
 
     }
 
     // answer 
     
     // transform y_ref_0 to colum major
-    buffer<float> y_ref_col = transform_to_column_major_order( w_0,  std::pow(2, SWITCH_SIZE + DIODE_SIZE) );
+    buffer<float> matrix_out_ref_col = transform_to_column_major_order( matrix_in,  std::pow(2, SWITCH_SIZE + DIODE_SIZE) );
 
     uint32_t C1_SWD_matrix_index = 0;
 
@@ -290,7 +290,7 @@ int main(int argc, const char *argv[]) {
     }
     
 
-    w_0.sync_to_device();
+    matrix_in.sync_to_device();
     in_0.sync_to_device();
     char *bufTrace = trace_res.data();
     if(TRACE_SIZE>0){
@@ -325,7 +325,7 @@ int main(int argc, const char *argv[]) {
     }
 
 
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), y_0.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
+    auto run_0 = npu_instance.create_run(app_id_0, matrix_in.bo(), matrix_out_col_major.bo(), in_0.bo(), out_0.bo(), trace_res.bo() );
 
 	
     header_print("info", "Running runtime test.");
@@ -345,7 +345,7 @@ int main(int argc, const char *argv[]) {
     MSG_BOX_LINE(40, "NPU time with bare call: " << npu_time.first << " us");
     MSG_BONDLINE(40);
 
-    y_0.sync_from_device();    
+    matrix_out_col_major.sync_from_device();    
     out_0.sync_from_device();
     if(TRACE_SIZE > 0){
         trace_res.sync_from_device();
@@ -358,7 +358,7 @@ int main(int argc, const char *argv[]) {
 
 
 
-    bool pass = are_results_close(y_0, y_ref_col, 1e-4f, 1e-3f);
+    bool pass = are_results_close(matrix_out_col_major, matrix_out_ref_col, 1e-4f, 1e-3f);
     // for (size_t i = 0; i < y_0.size(); i++) {
     //     std::cout << std::scientific      // Use exponential notation
     //               << std::setprecision(6) // Show 2 digits after decimal
@@ -387,28 +387,7 @@ int main(int argc, const char *argv[]) {
     //               << std::endl;
     // }
 
-    // // run with runlist
-    // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
-    // y_0.memset(0);
-    // for (int i = 0; i < Iterations; i++){
-    //     xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
-    //     runlist.add(run_0);
-    // }
-    
-    // npu_time.first = 0;
 
-    // {
-    //     time_utils::time_point start = time_utils::now();
-    //     runlist.execute();
-    //     runlist.wait();
-    //     time_utils::time_point stop = time_utils::now();
-    //     npu_time.first += time_utils::duration_us(start, stop).first;
-    // }
-    // npu_time.first /= Iterations * 2.0;
-    // MSG_BONDLINE(40);
-    // MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
-    // MSG_BONDLINE(40);
-    // y_0.sync_from_device();    
 
     if (pass){
         header_print("info", "PASSED ");
