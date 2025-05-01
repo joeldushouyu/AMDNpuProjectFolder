@@ -65,8 +65,6 @@ void accum_float_value(float *in, float *out,
 
 extern "C" {
     void CT_main(float* in, float* out,
-        const int32_t buffer_size_of_in, const int32_t buffer_size_of_out,
-        const int32_t iteration_ste_per_buffer,
         const int32_t buffer_in_prod_lock_id, const int32_t buffer_in_con_loc_id,
         const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id,
 
@@ -75,9 +73,6 @@ extern "C" {
 
         const int32_t C1_DSW_mat_size = C1_DSW_MATRIX_SIZE;
         const uint32_t externalSwitchDiodeStates = 0x0;
-
-        float_t x_cur_and_u[ROUND_UP_TO_16(STATE_SIZE + U_SIZE)] =  {0};
-        
 
         for (uint64_t l = 0; l < MAX_LOOP_SIZE; l++) {
             acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
@@ -109,7 +104,7 @@ extern "C" {
             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
             // use buffer 0 of ping in and out
             accum_float_value(in, out, 
-              buffer_size_of_in, buffer_size_of_out
+              BUFFER_SIZE_OF_IN_PING_POING, BUFFER_SIZE_OF_OUT_PING_PONG
             );
 
             release(buffer_in_prod_lock_id + 48, 1);

@@ -16,9 +16,12 @@
     "input_switch_size": 1,
     "input_size_per_iteration": 2,
     "output_size_per_iteration": 16,
-    "iteration_step_per_ping_pong_buffer": 248,
-    "buffer_size_of_in_ping_poing": 496,
-    "buffer_size_of_out_ping_pong": 3968,
+    "iteration_step_per_ping_pong_buffer": 246,
+    "buffer_size_of_in_ping_poing": 492,
+    "buffer_size_of_out_ping_pong": 3936,
     "ping_pong_buffer_iteration": 4,
-    "total_switch_diode_state": 16
+    "total_switch_diode_state": 16,
+    "buffer_size_of_cur_X_U": 16,
+    "buffer_size_of_C1_DSW_mat_res": 16,
+    "buffer_size_of_A_B_C_D_mat_res": 48
 }

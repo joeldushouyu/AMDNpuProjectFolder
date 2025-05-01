@@ -78,9 +78,6 @@ try:
         # and C_non_impulse_matrix, D_non_impulse_matrix can be combined into another matrix of size (Y_size x (state_size+u_size))
         _A_B_C_D_mat_row =  custom_ceil( state_size + 2*output_size, 16)
         _A_B_C_D_mat_col = (state_size + u_size)
-        # _len_of_A_B_matrix = state_size *( state_size+u_size)
-        # _len_of_C_imp_D_imp = (output_size * (state_size+u_size) )
-        # _len_of_C_non_imp_D_non_imp = _len_of_C_imp_D_imp
         A_B_C_D_mat_size = _A_B_C_D_mat_row * _A_B_C_D_mat_col
         
         _len_of_switch_size = (custom_ceil(switch_size+diode_size,32)//32 )   # number of 4byte(float) use for sending external switch for each iteration
@@ -89,7 +86,13 @@ try:
         
         buffer_size_of_switch_diode = total_switch_size*switch_diode_mat_size
         buffer_A_B_C_D_size = total_switch_size * A_B_C_D_mat_size
-        buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode +buffer_A_B_C_D_size )
+        
+        buffer_size_of_cur_X_U = custom_ceil(  state_size+ u_size , 16)
+        buffer_size_of_C1_DSW_mat_res = C1_DSW_row_size
+        buffer_size_of_A_B_C_D_mat_res =_A_B_C_D_mat_row
+        
+        buffer_size_for_in_out = ((63)*(1024))//4 - (buffer_size_of_switch_diode +buffer_A_B_C_D_size\
+            + buffer_size_of_cur_X_U  + buffer_size_of_C1_DSW_mat_res + buffer_size_of_A_B_C_D_mat_res)
         # define a ping pong for it?
         
         _max_iteration_step = int(custom_floor( buffer_size_for_in_out//(len_of_input_for_each_iteration + len_of_output_for_each_iteration),2)) #TODO: round down instead?
@@ -126,7 +129,11 @@ try:
             "buffer_size_of_out_ping_pong": buffer_size_of_out_ping_pong,
             "ping_pong_buffer_iteration": ping_pong_buffer_iteration,
             
-            "total_switch_diode_state": total_switch_size
+            "total_switch_diode_state": total_switch_size,
+            
+            "buffer_size_of_cur_X_U": buffer_size_of_cur_X_U,
+            "buffer_size_of_C1_DSW_mat_res":buffer_size_of_C1_DSW_mat_res,
+            "buffer_size_of_A_B_C_D_mat_res": buffer_size_of_A_B_C_D_mat_res
             
         }            
         with open("final_config.json","w") as outfile:

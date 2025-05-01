@@ -2,7 +2,6 @@
 #define __COMMON_CONFIG__
 
 #define MAX_LOOP_SIZE 9223372036854775807
-// #define EXTERNAL_SWITCH_NUMBER 2
-// #define DIODE_NUMBER 2
+
 
 #endif

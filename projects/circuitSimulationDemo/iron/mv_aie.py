@@ -118,7 +118,10 @@ def single_mat_vect_mult():
     buffer_size_of_in_ping_pong = extracted_data.get("buffer_size_of_in_ping_poing")
     buffer_size_of_out_ping_pong = extracted_data.get("buffer_size_of_out_ping_pong")
     ping_pong_buffer_iteration = extracted_data.get("ping_pong_buffer_iteration")
-
+    buffer_size_of_cur_X_U = extracted_data.get("buffer_size_of_cur_X_U")
+    buffer_size_of_C1_DSW_mat_res = extracted_data.get("buffer_size_of_C1_DSW_mat_res")
+    buffer_size_of_A_B_C_D_mat_res = extracted_data.get("buffer_size_of_A_B_C_D_mat_res")
+    
     total_switch_diode_state = extracted_data.get("total_switch_diode_state")
     dtype_in = np.dtype[np.float32]
     dtype_out = np.dtype[np.float32]
@@ -152,6 +155,23 @@ def single_mat_vect_mult():
         offset+= buffer_size_of_in_ping_pong*2*4
         
         
+        cur_x_u_ty = np.ndarray[ (buffer_size_of_cur_X_U,), dtype_in ]
+        cur_x_u_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(cur_x_u_ty ), sym_name="cur_x_u_buffer", address=offset)
+        ]
+        offset+= buffer_size_of_cur_X_U*4
+        
+        C1_DSW_mat_res_ty = np.ndarray[ (buffer_size_of_C1_DSW_mat_res,), dtype_in]
+        C1_DSW_mat_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(C1_DSW_mat_res_ty), sym_name="C1_DSW_mat_buffer", address=offset)
+        ]
+        offset+= buffer_size_of_C1_DSW_mat_res*4
+        
+        A_B_C_D_mat_res_ty = np.ndarray[ (buffer_size_of_A_B_C_D_mat_res, ), dtype_in]
+        A_B_C_D_mat_res_buffer = [
+            buffer_raw(tile=ComputeTile_0_2, buffer=try_convert_np_type_to_mlir_type(A_B_C_D_mat_res_ty), sym_name="A_B_C_D_mat_res_buffer", address=offset)
+        ]
+        offset+= buffer_size_of_A_B_C_D_mat_res*4
         
         switch_diode_matrix_ty = np.ndarray[ (C1_DSW_buffer_size, ), dtype_in]
         switch_diode_buffer = [
@@ -262,7 +282,6 @@ def single_mat_vect_mult():
                 
         CT_0_2_main_func = external_func("CT_main", inputs=[
             in_data_ty, out_data_ty,
-            np.int32, np.int32, np.int32,
             np.int32, np.int32, np.int32, np.int32,
             switch_diode_matrix_ty
         ])
@@ -272,7 +291,6 @@ def single_mat_vect_mult():
             # for _ in range_(sys.maxsize):
             CT_0_2_main_func(
                 in_buffer[0], out_buffer[0],
-                constant(buffer_size_of_in_ping_pong), constant(buffer_size_of_out_ping_pong), constant(iteration_step_per_ping_pong_buffer),
                 constant(8),constant(9),constant(10),constant(11),
                 switch_diode_buffer[0]
                 
@@ -341,7 +359,7 @@ def single_mat_vect_mult():
                    )
         packetflow(9, source=ComputeTile_0_2, source_port=WireBundle.DMA, source_channel=0,
                     dest = ShimTile_0, dest_port= WireBundle.DMA, dest_channel=1
-                   )
+                   ) 
         
         memref.global_("in_SHM_CT_0_2_0", T.memref( in_0_size, T.f32() ), sym_visibility="public")            
         memref.global_("in_SHM_CT_0_2_1", T.memref(in_1_size, T.f32()), sym_visibility="public")
