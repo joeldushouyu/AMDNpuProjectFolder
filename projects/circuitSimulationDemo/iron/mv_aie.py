@@ -112,13 +112,14 @@ def single_mat_vect_mult():
     A_B_C_D_matrix_size = extracted_data.get("A_B_C_D_matrix_size")
     A_B_C_D_buffer_size = extracted_data.get("A_B_C_D_buffer_size")
     input_switch_size = extracted_data.get("input_switch_size")
-    input_size = extracted_data.get("input_size")
+    input_size_per_iteration = extracted_data.get("input_size_per_iteration")
+    output_size_per_iteration = extracted_data.get("output_size_per_iteration")
     iteration_step_per_ping_pong_buffer = extracted_data.get("iteration_step_per_ping_pong_buffer")
     buffer_size_of_in_ping_pong = extracted_data.get("buffer_size_of_in_ping_poing")
     buffer_size_of_out_ping_pong = extracted_data.get("buffer_size_of_out_ping_pong")
     ping_pong_buffer_iteration = extracted_data.get("ping_pong_buffer_iteration")
 
-    
+    total_switch_diode_state = extracted_data.get("total_switch_diode_state")
     dtype_in = np.dtype[np.float32]
     dtype_out = np.dtype[np.float32]
     
@@ -126,8 +127,7 @@ def single_mat_vect_mult():
     @device(AIEDevice.npu2)
     def device_body():
 
-        
-        total_switch_size = 2**(switch_size + diode_size)
+
    
         # Tile declarations
         ShimTile_0 = tile(0,0)
@@ -363,7 +363,7 @@ def single_mat_vect_mult():
                 metadata="in_SHM_CT_0_2_0",
                 bd_id=1,
                 mem=A, offsets=[0,0,0,0], 
-                sizes= [1, total_switch_size  , C1_DSW_col_size, C1_DSW_row_size ],
+                sizes= [1, total_switch_diode_state  , C1_DSW_col_size, C1_DSW_row_size ],
                 strides=[0,  C1_DSW_matrix_size ,1,C1_DSW_col_size],  
                 packet_id=6,
                 packet_type=0                  
@@ -381,7 +381,7 @@ def single_mat_vect_mult():
             assert in_0_size % A_B_C_D_col_size == 0
             if (in_1_size-data_flow_in_size > 0):
                 custom_npu_dma_memcpy_nd(metadata="in_SHM_CT_0_2_1", bd_id=3, mem=A, offsets=[0, 0,  0,  in_0_size //A_B_C_D_col_size  ], #TODO: assert is okay for it
-                                        sizes= [1, total_switch_size-A_B_C_D_num_for_balance_cutoff , A_B_C_D_col_size, A_B_C_D_row_size],
+                                        sizes= [1, total_switch_diode_state-A_B_C_D_num_for_balance_cutoff , A_B_C_D_col_size, A_B_C_D_row_size],
                                         strides=[0,   A_B_C_D_matrix_size   ,1, A_B_C_D_col_size],
                                         packet_id=8, packet_type=0)
 

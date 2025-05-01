@@ -29,54 +29,18 @@ float* retrieveMatrixOFfsetBaseOnState(const uint32_t state, const int32_t matri
 
 template<typename T>
 __attribute__((noinline)) void accumValue(float *restrict in, float*restrict out,
-  const int32_t in_offset,  const int32_t out_offset,
-  const int32_t iteration_size, const int32_t input_size, const int32_t output_size
+  const int32_t in_offset,  const int32_t out_offset
 ){
   
   in += in_offset;
   out+= out_offset;
   // assert divide out without any remainder
-  int32_t input_per_iteration_size = input_size / iteration_size;
-  int32_t output_per_iteration_size = output_size / iteration_size;
-  event0();
-
-
-  for (int32_t i = 0; i < iteration_size; i++){
+  int32_t input_per_iteration_size = INPUT_SIZE_PER_ITERATION;
+  int32_t output_per_iteration_size = OUTPUT_SIZE_PER_ITERATION;
+  for (int32_t i = 0; i < ITERATION_STEP_PER_PING_PONG_BUFFER * PING_PONG_BUFFER_ITERATION; i++){
     float acc= 0;
     for(int32_t k = 0; k < input_per_iteration_size; k++){
-      // acc += *in;
-      if(k+1 == input_per_iteration_size){
-        // if(*debug_input == 100){
-          acc += *in;
-        // }else{
-        //   acc +=0;
-        // }
-      }else{
-        acc += *in;
-      }
-
-      // if(k +1 == input_per_iteration_size){
-
-      //   // This means the float value is stored in Little Endian mode
-      //   uint8_t *pt = (uint8_t *)in;
-      //   uint8_t v1 = *pt++;
-      //   uint8_t v2 = *pt++;
-      //   uint8_t v3 = *pt++;
-      //   uint8_t v4 = *pt++;
-        
-      //   // Now instead of memcpy:
-      //   uint32_t bits = 
-      //   ((uint32_t)v1) |
-      //   ((uint32_t)v2 << 8) |
-      //   ((uint32_t)v3 << 16) |
-      //   ((uint32_t)v4 << 24);
-      //   float f = *(float *)&bits;
-      //   acc += f;
-        
-      // }else{
-
-      //   acc += *in;
-      // }
+      acc += *in;
       in++;
     }
     for(int32_t l = 0; l < output_per_iteration_size; l++){
@@ -85,18 +49,18 @@ __attribute__((noinline)) void accumValue(float *restrict in, float*restrict out
     }
 
   }
-  event1();
+
 }
 
 
 
 void accum_float_value(float *in, float *out, 
-    const int32_t in_offset,  const int32_t out_offset,
-    const int32_t iteration_size, const int32_t input_size, const int32_t output_size
+    const int32_t in_offset,  const int32_t out_offset
     // uint32_t *debug_input
   ){
-    accumValue<float>(in,out, in_offset, out_offset,
-       iteration_size, input_size,output_size);
+    event0();
+    accumValue<float>(in,out, in_offset, out_offset);
+    event1();
   }
 
 extern "C" {
@@ -120,8 +84,7 @@ extern "C" {
             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
             // use buffer 0 of ping in and out
             accum_float_value(in, out, 
-            0, 0,
-            iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+            0, 0
             );
 
 
@@ -146,8 +109,7 @@ extern "C" {
             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
             // use buffer 0 of ping in and out
             accum_float_value(in, out, 
-              buffer_size_of_in, buffer_size_of_out,
-            iteration_ste_per_buffer, buffer_size_of_in,buffer_size_of_out
+              buffer_size_of_in, buffer_size_of_out
             );
 
             release(buffer_in_prod_lock_id + 48, 1);

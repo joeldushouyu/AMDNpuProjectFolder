@@ -247,8 +247,9 @@ int main(int argc, const char *argv[]) {
     // npu_instance.interperate_bd(1);
 
     // compare the two sequences
-    int input_iteration_size = PING_PONG_BUFFER_ITERATION * ITERATION_STEP_PER_PING_PONG_BUFFER * INPUT_SIZE;
-    int output_iteration_size = PING_PONG_BUFFER_ITERATION * ITERATION_STEP_PER_PING_PONG_BUFFER * Y_SIZE;
+    int input_iteration_size = BUFFER_SIZE_OF_IN_PING_POING * PING_PONG_BUFFER_ITERATION ;
+    int output_iteration_size = BUFFER_SIZE_OF_OUT_PING_PONG * PING_PONG_BUFFER_ITERATION ;
+
     buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
     buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(in_size, 3, app_id_0);
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(in_size, 4, app_id_0);
@@ -285,9 +286,7 @@ int main(int argc, const char *argv[]) {
     // }
   
     for(int i = 0; i < input_iteration_size; i++){
- 
         in_0[i] =i;
- 
     }
     
 
@@ -314,11 +313,11 @@ int main(int argc, const char *argv[]) {
     int32_t out_offset = 0; 
     for(int i = 0; i < ITERATION_STEP_PER_PING_PONG_BUFFER* PING_PONG_BUFFER_ITERATION; i++){
         float acc = 0;
-        for(int k = 0; k < INPUT_SIZE;k ++){
+        for(int k = 0; k < INPUT_SIZE_PER_ITERATION;k ++){
             acc += in_0[in_offset];
             in_offset++;
         }
-        for(int l = 0; l < Y_SIZE; l++ ){
+        for(int l = 0; l < OUTPUT_SIZE_PER_ITERATION; l++ ){
             out_ref_0[out_offset] = acc;
             out_offset++;
         }
@@ -368,10 +367,10 @@ int main(int argc, const char *argv[]) {
     //               << std::endl;
     // }
 
-    debug_inspect_all(
-        w_0, y_0, 
-        std::pow(2, SWITCH_SIZE + DIODE_SIZE)
-    );
+    // debug_inspect_all(
+    //     w_0, y_0, 
+    //     std::pow(2, SWITCH_SIZE + DIODE_SIZE)
+    // );
 
     if (pass ==false){
         std::cout <<"Fail stage 1" << std::endl;
