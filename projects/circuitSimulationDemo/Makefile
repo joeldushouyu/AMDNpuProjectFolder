@@ -115,7 +115,7 @@ config_stage:
 	-@rm -f final_config.json
 	-@rm -f circuitConfig.h
 
-	python generate_config.py 
+	python generate_config.py ./LinearCircuitDynamicLinks/cppReadCircuitDataLibrary/config.json  --final_json final_config.json  --header circuitConfig.h
 	cp final_config.json  ./iron/
 	cp circuitConfig.h ./host/
 	cp circuitConfig.h ./kernel/
