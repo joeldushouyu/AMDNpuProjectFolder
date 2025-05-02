@@ -2,3 +2,4 @@
 *.exe
 *.log
 *.o
+./circuitSimulationDemo/LinearCircuitDynamicLinks/*
