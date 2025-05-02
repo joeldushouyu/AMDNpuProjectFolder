@@ -45,7 +45,7 @@ int main(int argc, const char *argv[]) {
     int scalarSize = 1;
 
     // NPU instance
-    npu_app npu_instance(1, 1, 0);
+    npu_app npu_instance(1);
     if (VERBOSE >= 1){
         npu_instance.get_npu_power(true);
         npu_instance.print_npu_info();
@@ -53,7 +53,7 @@ int main(int argc, const char *argv[]) {
 
     accel_user_desc accel_desc_0 = {
         .xclbin_name = "build/xclbins/aie.xclbin",
-        .instr_name = "build/insts/aie.txt",
+        .instr_seq  = npu_sequence("build/insts/aie.txt", true),
     };
 
 
@@ -89,7 +89,7 @@ int main(int argc, const char *argv[]) {
     x_0.sync_to_device();
 
 
-    auto run_0 = npu_instance.create_run(w_0.bo(), x_0.bo(), y_0.bo(), app_id_0);
+    auto run_0 = npu_instance.create_run( app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
 	
     header_print("info", "Running runtime test.");
     header_print("info", "Running kernel with bare call.");
