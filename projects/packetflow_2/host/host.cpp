@@ -40,19 +40,19 @@ int main(int argc, const char *argv[]) {
 //
 //    }
 
-    instr_v = test_utils::load_instr_sequence("./build/insts/aie.txt");
+    instr_v = test_utils::load_instr_binary("./build/insts/aie.txt");
     int IN_SIZE;
     int OUT_SIZE;
 
     if(app_id == 1){
-        IN_SIZE = 260;
+        IN_SIZE = 260;  
         OUT_SIZE = 256;
     }
     else{
         IN_SIZE = 260;
         OUT_SIZE = 256;
     }
-    OUT_SIZE = 264;
+    OUT_SIZE = 264;// 4 byte for packet header (CT->MT) then another 4 byte (MT->shimtile)
     std::cout << "APP id is " <<  app_id << std::endl;
   // Start the XRT test code
   // Get a device handle
@@ -94,9 +94,9 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < IN_SIZE; i++){
       if (i < 4){
           if(app_id == 1){
-            srcVecA[0] = 7;
-            srcVecA[1] = 0xf;
-            srcVecA[2] = 0xf0;
+            srcVecA[0] = 7; // packet id matters
+            srcVecA[1] = 0xf;  // the top 3 byte doesn't matter for now
+            srcVecA[2] = 0x10;
             srcVecA[3] = 0xf0;
               // srcVecA[i] = 1;
           }
