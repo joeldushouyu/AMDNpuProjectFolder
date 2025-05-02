@@ -25,27 +25,33 @@ namespace po = boost::program_options;
 #include <algorithm> // For std::max
 
 
+
 bool are_results_close(
-    buffer<float>& y_cpu,
-    buffer<float>& y_npu,
+    const buffer<float>& y_cpu,
+    const buffer<float>& y_npu,
+    const int compare_size,
+    size_t offset_cpu = 0,
+    size_t offset_npu = 0,
     float rtol = 1e-5f,  // Relative tolerance (1e-5 = 0.001%)
     float atol = 1e-6f   // Absolute tolerance (1e-6 = 0.0001%)
 ) {
-    // First check vector sizes match
-    if (y_cpu.size() != y_npu.size()) {
+    // Check offsets are within bounds
+    if (offset_cpu >= y_cpu.size() || offset_npu >= y_npu.size())
         return false;
-    }
 
-    // Component-wise comparison
-    for (size_t i = 0; i < y_cpu.size(); ++i) {
-        const float a = y_cpu[i];
-        const float b = y_npu[i];
-        const float abs_diff = std::fabs(a - b);
+    // Compute remaining lengths
+    size_t cpu_len = y_cpu.size() - offset_cpu;
+    size_t npu_len = y_npu.size() - offset_npu;
 
-        // Calculate acceptable tolerance threshold
-        const float threshold = atol + rtol * std::max(std::fabs(a), std::fabs(b));
+    // Ensure we don't compare beyond available range
+    if (static_cast<size_t>(compare_size) > cpu_len || static_cast<size_t>(compare_size) > npu_len)
+        return false;
 
-        // Early exit if any element fails
+    for (int i = 0; i < compare_size; ++i) {
+        float a = y_cpu[offset_cpu + i];
+        float b = y_npu[offset_npu + i];
+        float abs_diff = std::fabs(a - b);
+        float threshold = atol + rtol * std::max(std::fabs(a), std::fabs(b));
         if (abs_diff > threshold) {
             return false;
         }
@@ -105,17 +111,14 @@ int main(int argc, const char *argv[]) {
     int app_id_0 = npu_instance.register_accel_app(accel_desc_0);
 
     npu_instance.interperate_bd(0);
-    // npu_instance.interperate_bd(1);
-
-    // compare the two sequences
-    buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
-
-
+  
     
     buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(W_VOLUME, 3, app_id_0);
     buffer<dtype_in> x_0 = npu_instance.create_bo_buffer<dtype_in>(X_VOLUME, 4, app_id_0);
-    buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME, 5, app_id_0);
-
+    buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME*2, 5, app_id_0); //twice the size for it
+    buffer<dtype_in> w_1 = npu_instance.create_bo_buffer<dtype_in>(W_VOLUME, 6, app_id_0);
+    buffer<dtype_in> x_1 = npu_instance.create_bo_buffer<dtype_in>(X_VOLUME, 7, app_id_0);
+    // buffer<dtype_out> y_1 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME, 8, app_id_0);
 
 
     // random float, not in in this case
@@ -125,30 +128,27 @@ int main(int argc, const char *argv[]) {
 
     for (int i = 0; i < W_VOLUME; i++){
         w_0[i] = dist(gen);
+        w_1[i] = dist(gen);    
     }
-
+    
     for (int i = 0; i < X_VOLUME; i++){
         x_0[i] = dist(gen);
+        x_1[i] = dist(gen);
     }
-    x_0[0] = 1.23334;
-    // for (int i = 0; i < W_VOLUME; i++){
-    //     w_0[i] = utils::getRandInt(-10, 10);
-    // }
 
-    // for (int i = 0; i < X_VOLUME; i++){
-    //     x_0[i] = utils::getRandInt(-10, 10);
-    // }
- 
     header_print("info", "Calculate reference for " << M << "x" << K << "x" << N);
     buffer<dtype_out> y_ref_0(Y_VOLUME);    
-    buffer<dtype_out> y_ref_1(Y_VOLUME);    
+    buffer<dtype_out> y_ref_1(Y_VOLUME);   
+
     linear(y_ref_0, w_0, x_0);
+    linear(y_ref_1, w_1, x_1);
 
     w_0.sync_to_device();
-
     x_0.sync_to_device();
+    x_1.sync_to_device();
+    w_1.sync_to_device();
 
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
+    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo(), w_1.bo(), x_1.bo());
 
 	
     header_print("info", "Running runtime test.");
@@ -168,7 +168,8 @@ int main(int argc, const char *argv[]) {
     MSG_BOX_LINE(40, "NPU time with bare call: " << npu_time.first << " us");
     MSG_BONDLINE(40);
 
-    y_0.sync_from_device();    
+    y_0.sync_from_device(); 
+    // y_1.sync_from_device();   
     header_print("info", "Finished running kernel");
 
     // bool pass = true;
@@ -176,19 +177,28 @@ int main(int argc, const char *argv[]) {
     //     pass = false;
     // }
 
-    bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
-    for (size_t i = 0; i < y_0.size(); i++) {
+    bool pass = are_results_close(y_0, y_ref_0, Y_VOLUME, 0,0,1e-4f, 1e-3f) && are_results_close(y_0, y_ref_1, Y_VOLUME,  Y_VOLUME, 0,  1e-4f, 1e-3f);
+    // for (size_t i = 0; i < y_ref_0.size(); i++) {
+    //     std::cout << std::scientific      // Use exponential notation
+    //               << std::setprecision(6) // Show 2 digits after decimal
+    //               << "y[" << i << "] = " << y_0[i]
+    //               << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+    //               << std::endl;
+    // }
+    std::cout << "*********************" << std::endl;
+    for (size_t i = 0; i < y_ref_1.size(); i++) {
         std::cout << std::scientific      // Use exponential notation
                   << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_0[i]
-                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
+                  << "y[" << i << "] = " << y_0[i + Y_VOLUME]
+                  << " ?= y_ref[" << i << "] = " << y_ref_1[i]
                   << std::endl;
     }
+
     // run with runlist
     xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
     y_0.memset(0);
     for (int i = 0; i < Iterations; i++){
-        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
+        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo(), w_1.bo(), x_1.bo());
         runlist.add(run_0);
     }
     
