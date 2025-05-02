@@ -72,20 +72,22 @@ int main(int argc, const char *argv[]) {
     arg_utils::add_default_options(desc);
 
     // Add custom options
-    desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
-    desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
-    desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
+    desc.add_options()("M,m", po::value<int>()->default_value(64 ), "M");
+    desc.add_options()("K,k", po::value<int>()->default_value(256), "K");
+    desc.add_options()("I,i", po::value<int>()->default_value(1), "Iterations");
 
     arg_utils::parse_options(argc, argv, desc, vm);
     
     // User logic
     int M = vm["M"].as<int>();
     int K = vm["K"].as<int>();
-    int Iterations = vm["I"].as<int>();
+    int Iterations =1; // vm["I"].as<int>();
     int N = 1;
     int Y_VOLUME = M * 1;
     int W_VOLUME = M * K;
     int X_VOLUME = 1 * K;
+
+    int trace_size = 8192;
 
     // NPU instance
     npu_app npu_instance(1);
@@ -116,7 +118,10 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_in> x_0 = npu_instance.create_bo_buffer<dtype_in>(X_VOLUME, 4, app_id_0);
     buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME, 5, app_id_0);
 
+    int tmp_trace_size  = (trace_size > 0)? trace_size: 1;
+    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size, 6, app_id_0);
 
+    
 
     // random float, not in in this case
     std::random_device rd;
@@ -144,12 +149,16 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_out> y_ref_1(Y_VOLUME);    
     linear(y_ref_0, w_0, x_0);
 
+    char *bufTrace = trace_res.data();
+
     w_0.sync_to_device();
 
     x_0.sync_to_device();
-
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
-
+    if(trace_size > 0){ 
+        memset(bufTrace, 0, trace_size); 
+        trace_res.sync_to_device();  
+    }
+    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo(), trace_res.bo());
 	
     header_print("info", "Running runtime test.");
     header_print("info", "Running kernel with bare call.");
@@ -169,6 +178,12 @@ int main(int argc, const char *argv[]) {
     MSG_BONDLINE(40);
 
     y_0.sync_from_device();    
+    if(trace_size > 0){
+        trace_res.sync_from_device();
+        npu_instance.write_out_trace(((char *)bufTrace), trace_size,
+        "trace.txt");
+    }
+
     header_print("info", "Finished running kernel");
 
     // bool pass = true;
@@ -185,27 +200,27 @@ int main(int argc, const char *argv[]) {
                   << std::endl;
     }
     // run with runlist
-    xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
-    y_0.memset(0);
-    for (int i = 0; i < Iterations; i++){
-        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
-        runlist.add(run_0);
-    }
+    // xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
+    // y_0.memset(0);
+    // for (int i = 0; i < Iterations; i++){
+    //     xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
+    //     runlist.add(run_0);
+    // }
     
-    npu_time.first = 0;
+    // npu_time.first = 0;
 
-    {
-        time_utils::time_point start = time_utils::now();
-        runlist.execute();
-        runlist.wait();
-        time_utils::time_point stop = time_utils::now();
-        npu_time.first += time_utils::duration_us(start, stop).first;
-    }
-    npu_time.first /= Iterations * 2.0;
-    MSG_BONDLINE(40);
-    MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
-    MSG_BONDLINE(40);
-    y_0.sync_from_device();    
+    // {
+    //     time_utils::time_point start = time_utils::now();
+    //     runlist.execute();
+    //     runlist.wait();
+    //     time_utils::time_point stop = time_utils::now();
+    //     npu_time.first += time_utils::duration_us(start, stop).first;
+    // }
+    // npu_time.first /= Iterations * 2.0;
+    // MSG_BONDLINE(40);
+    // MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
+    // MSG_BONDLINE(40);
+    // y_0.sync_from_device();    
 
     if (pass){
         header_print("info", "PASSED ");

@@ -101,6 +101,10 @@ void matVec_float32(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c)
     // v16float *__restrict c_ptr = (v16float *)c;
 
     //TODO: check k, m is dividsible by 16
+
+    ///home/shouyud/PROJECT/mlir-aie/ironenv/lib/python3.12/site-packages/mlir_aie/include/aie_api/detail/aie2p/emulated_mmul_intrinsics.hpp
+    ///home/shouyud/PROJECT/mlir-aie/ironenv/lib/python3.12/site-packages/llvm-aie/lib/clang/19/include/aie2p_vmult.h
+    
     for(unsigned int col = 0; col< k; col +=16){
 
         aie::accum<T_acc, 16> c_acc_in;
@@ -110,13 +114,23 @@ void matVec_float32(T_in *__restrict a, T_in *__restrict b, T_out *__restrict c)
             
             aie::vector<T_in, 16> b_vec = aie::load_v<16>(b_ptr);
             
-            #pragma clang loop unroll_count(16)
+            // #pragma clang loop unroll_count(16)
             for (unsigned int l = 0; l < 16; l++){
                 // load each A1... An and scatter each 
                 aie::vector<T_in, 16> a_vec_0 = aie::load_v<16>(a_ptr);
                 a_ptr += 16;
                 aie::vector<T_in, 16> b0 = aie::broadcast<T_in, 16>(b_vec[l]);
-                c_acc_in = mac_elem_16(a_vec_0, b0, c_acc_in);
+                event0();
+                // c_acc_in = mac_elem_16_accuracy_safe(a_vec_0, b0, c_acc_in,0,0,0);// faster than below version
+                c_acc_in = aie::mac(c_acc_in, a_vec_0, b0);
+                // #pragma clang loop unroll_count(16)
+                // for(int k = 0; k < 16; k++){
+                //     c_acc_in += aie::add()
+                //     c_acc_in.insert(k, a_vec_0[k]*b0[k] + c_acc_in.extract(k)); 
+                // }
+                // c_acc_in += aie::add(a_vec_0, b_vec);
+                event0();
+                // c_acc_in = mac_elem_16(a_vec_0, b0, c_acc_in);
 
                 // load second A
             }
@@ -145,6 +159,7 @@ extern "C"
 #ifndef MV_K_fp32
 #define MV_K_fp32 64
 #endif
+
 
     void mv_float32(
         float *restrict a,

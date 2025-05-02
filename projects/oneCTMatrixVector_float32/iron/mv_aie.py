@@ -27,7 +27,10 @@ from aie.helpers.dialects.ext.scf import _for as range_
 from aie.dialects import memref
 #given a 512x512 matrix size and 512x`1 vector
 
-
+import aie.utils.trace as trace_utils
+from aie.utils.trace import PortEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from enum import IntEnum
 def single_mat_vect_mult():
     dev = AIEDevice.npu2
     
@@ -40,9 +43,10 @@ def single_mat_vect_mult():
     @device(AIEDevice.npu2)
     
     def device_body():
+        trace_size = 8192 
         t_size = 16
-        M_size = 128
-        K_size = 1024
+        M_size = 64
+        K_size = 256
         m_size = 64
         k_size = 64
         K_div_k = K_size//k_size
@@ -68,7 +72,7 @@ def single_mat_vect_mult():
         shim_dma_allocation("C_MT_SHM", DMAChannelDir.S2MM, 0,0)
         shim_dma_allocation("A_SHM_MT", DMAChannelDir.MM2S, 0, 0)
         shim_dma_allocation("B_SHM_MT", DMAChannelDir.MM2S, 1, 0)
-        # Tile declarations
+        # Tile declarationsC_ty
         ShimTile = tile(0,0)
         MemTile = tile(0,1)
         ComputeTile = tile(0,2)
@@ -130,6 +134,9 @@ def single_mat_vect_mult():
         flow(MemTile, WireBundle.DMA, 1, ComputeTile, WireBundle.DMA, 1)# B
         flow(ComputeTile, WireBundle.DMA, 0, MemTile, WireBundle.DMA, 2) # C
         
+        if(trace_size > 0):
+            tiles_to_trace = [ComputeTile, ShimTile]
+            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
         
         # DMA logic for memorytile
         @memtile_dma(MemTile)
@@ -355,6 +362,15 @@ def single_mat_vect_mult():
                     sizes=[1, 1, M_size // m_size, m_size],  #TODO:
                     strides=[0, 0,  m_size, 1],
                 )
+                
+                if(trace_size > 0):
+                    #Note: this automatically write to ddr_id3, app_id 6. Thus host need to be read to receive it
+                    trace_utils.configure_packet_tracing_aie2(
+                        tiles_to_trace=tiles_to_trace,
+                        ddr_id=3,
+                        shim=ShimTile,
+                        trace_size=trace_size
+                    )             
                 npu_dma_wait("C_MT_SHM")
     
 with mlir_mod_ctx() as ctx:
