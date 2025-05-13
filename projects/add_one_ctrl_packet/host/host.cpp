@@ -22,6 +22,12 @@
 #include "xrt/xrt_kernel.h"
 
 constexpr int OUT_SIZE = 64;
+std::string formatBinary8(uint32_t val) {
+  std::bitset<32> bits(val);
+  std::string str = bits.to_string();
+  // Insert spaces every 8 bits
+  return str.substr(0, 8) + " " + str.substr(8, 8) + " " + str.substr(16, 8) + " " + str.substr(24, 8);
+}
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
@@ -123,14 +129,18 @@ int main(int argc, const char *argv[]) {
   // Read 8 32-bit values from "other_buffer" at address 0x440 using two
   // control packets
   for (int i = 0; i < 2; i++) {
-    address = 0x440 + i * sizeof(uint32_t) * 4;
+    address = 0x440 + i * sizeof(uint32_t) * 4; // 4 because maximum of 4 words in response???
     operation = 0x1;
-    stream_id = 0x2;
-    beats = 3;
+    stream_id = 0x2;  //path for read response to be back
+    beats = 3;  //4-1 == 3?
     uint32_t header2 =
         stream_id << 24 | operation << 22 | beats << 20 | address;
     header2 |= (0x1 & parity(header2)) << 31;
     ctrlPackets.push_back(header2);
+  }
+  for (size_t i = 0; i < ctrlPackets.size(); ++i) {
+    std::cout << "ctrlPackets[" << i << "] = "
+              << formatBinary8(ctrlPackets[i]) << std::endl;
   }
   void *bufctrlIn = bo_ctrlIn.map<void *>();
   memcpy(bufctrlIn, ctrlPackets.data(), ctrlPackets.size() * sizeof(int));
@@ -185,6 +195,12 @@ int main(int argc, const char *argv[]) {
     }
   }
 
+  auto ctrlInPtr = bo_ctrlIn.map<int32_t*>();  // Map buffer to host memory
+  for (size_t i = 0; i < OUT_SIZE; ++i) {
+      std::cout << "ctrlIn[" << i << "] = 0x"
+                << std::setw(8) << std::setfill('0') << std::hex << ctrlInPtr[i]
+                << std::endl;
+  }
   if (!errors) {
     std::cout << "\nPASS!\n\n";
     return 0;
