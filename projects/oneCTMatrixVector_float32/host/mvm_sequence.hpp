@@ -15,18 +15,16 @@
 ///@warning The function is only used for the npu2
 ///@warning This function will write the sequence to a file named "generated.txt"
 ///@warning The sequence name is "mvm_i8"
-npu_sequence generate_mvm_sequence(uint32_t M, uint32_t K, uint32_t m, uint32_t k, uint32_t rows, uint32_t cols){
-    npu_sequence seq;
+void generate_mvm_sequence(npu_sequence& seq, uint32_t M, uint32_t K, uint32_t m, uint32_t k, uint32_t rows, uint32_t cols){
     int cores = rows * cols;
     const int Arg_A = 0;
     const int Arg_B = 1;
     const int Arg_C = 2;
-    seq.setup_device(device_npu2);
-
-    seq.name_instr("mvm_i8");
+    uint32_t col_offset = 3;
+    seq.clear_cmds();
     std::vector<npu_tiles> shim_tiles;
     for (int i = 0; i < cols; i++){
-        shim_tiles.push_back(get_tile(0, i));
+        shim_tiles.push_back(get_tile(0, i + col_offset));
     }
     /*
     npu_dma_memcpy_nd(
@@ -109,10 +107,8 @@ npu_sequence generate_mvm_sequence(uint32_t M, uint32_t K, uint32_t m, uint32_t 
         );
     }
 
-    seq.to_npu();
+    seq.cmds2seq();
     seq.write_out_sequence("generated.txt");
-
-    return seq;
 }
 
 #endif

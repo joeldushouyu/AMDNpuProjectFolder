@@ -87,34 +87,34 @@ int main(int argc, const char *argv[]) {
     int W_VOLUME = M * K;
     int X_VOLUME = 1 * K;
 
+    bool pass = true;    
     // NPU instance
-    npu_app npu_instance(1);
+    npu_manager npu_instance(npu_device::device_npu2);
     if (VERBOSE >= 1){
         npu_instance.get_npu_power(true);
         npu_instance.print_npu_info();
     }
 
-    accel_user_desc accel_desc_0 = {
-        .xclbin_name = "build/xclbins/mv.xclbin",
-        .instr_seq = npu_sequence("build/insts/mv.txt", true),
-    };
+    std::string xclbin_name = "build/xclbins/mv.xclbin";
+    npu_app_desc accel_desc_0, accel_desc_1;
+    accel_desc_0.xclbin_name = xclbin_name;
+    accel_desc_0.app_name = "mv";
 
 
     header_print("info", "Matrix size " << M << "x" << K << "x" << N);
 
-    int app_id_0 = npu_instance.register_accel_app(accel_desc_0);
+    npu_app app_0 = npu_instance.create_app(accel_desc_0);
 
-    npu_instance.interperate_bd(0);
-    // npu_instance.interperate_bd(1);
+    app_0.instr_seq->from_file("build/insts/mv.txt");
 
-    // compare the two sequences
-    buffer<int32_t> seq_0 = accel_desc_0.instr_seq.to_bo().cast_to<int32_t>();
+    buffer<float> seq_0 = app_0.instr_seq->dump().cast_to<float>();
+
 
 
     
-    buffer<dtype_in> w_0 = npu_instance.create_bo_buffer<dtype_in>(W_VOLUME, 3, app_id_0);
-    buffer<dtype_in> x_0 = npu_instance.create_bo_buffer<dtype_in>(X_VOLUME, 4, app_id_0);
-    buffer<dtype_out> y_0 = npu_instance.create_bo_buffer<dtype_out>(Y_VOLUME, 5, app_id_0);
+    buffer<dtype_in> w_0 = app_0.create_bo_buffer<dtype_in>(W_VOLUME, 3);
+    buffer<dtype_in> x_0 = app_0.create_bo_buffer<dtype_in>(X_VOLUME, 4);
+    buffer<dtype_out> y_0 = app_0.create_bo_buffer<dtype_out>(Y_VOLUME, 5);
 
 
 
@@ -148,7 +148,6 @@ int main(int argc, const char *argv[]) {
 
     x_0.sync_to_device();
 
-    auto run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
 
 	
     header_print("info", "Running runtime test.");
@@ -157,8 +156,7 @@ int main(int argc, const char *argv[]) {
 	
     for (int i = 0; i < Iterations; i++) {
         time_utils::time_point start = time_utils::now();
-        run_0.start();
-        run_0.wait();
+        app_0(w_0, x_0, y_0);
 
 	    time_utils::time_point stop = time_utils::now();
 	    npu_time.first += time_utils::duration_us(start, stop).first;
@@ -170,42 +168,6 @@ int main(int argc, const char *argv[]) {
 
     y_0.sync_from_device();    
     header_print("info", "Finished running kernel");
-
-    // bool pass = true;
-    // if (utils::compare_vectors(y_0, y_ref_0,1, 1e-3) > 0){
-    //     pass = false;
-    // }
-
-    bool pass = are_results_close(y_0, y_ref_0, 1e-4f, 1e-3f);
-    for (size_t i = 0; i < y_0.size(); i++) {
-        std::cout << std::scientific      // Use exponential notation
-                  << std::setprecision(6) // Show 2 digits after decimal
-                  << "y[" << i << "] = " << y_0[i]
-                  << " ?= y_ref[" << i << "] = " << y_ref_0[i]
-                  << std::endl;
-    }
-    // run with runlist
-    xrt::runlist runlist = npu_instance.create_runlist(app_id_0);
-    y_0.memset(0);
-    for (int i = 0; i < Iterations; i++){
-        xrt::run run_0 = npu_instance.create_run(app_id_0, w_0.bo(), x_0.bo(), y_0.bo());
-        runlist.add(run_0);
-    }
-    
-    npu_time.first = 0;
-
-    {
-        time_utils::time_point start = time_utils::now();
-        runlist.execute();
-        runlist.wait();
-        time_utils::time_point stop = time_utils::now();
-        npu_time.first += time_utils::duration_us(start, stop).first;
-    }
-    npu_time.first /= Iterations * 2.0;
-    MSG_BONDLINE(40);
-    MSG_BOX_LINE(40, "NPU time with runlist: " << npu_time.first << " us");
-    MSG_BONDLINE(40);
-    y_0.sync_from_device();    
 
     if (pass){
         header_print("info", "PASSED ");
