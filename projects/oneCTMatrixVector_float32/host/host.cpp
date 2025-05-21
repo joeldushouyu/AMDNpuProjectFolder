@@ -72,16 +72,16 @@ int main(int argc, const char *argv[]) {
     arg_utils::add_default_options(desc);
 
     // Add custom options
-    desc.add_options()("M,m", po::value<int>()->default_value(128 * 1 ), "M");
-    desc.add_options()("K,k", po::value<int>()->default_value(128 * 8), "K");
-    desc.add_options()("I,i", po::value<int>()->default_value(2048), "Iterations");
+    desc.add_options()("M,m", po::value<int>()->default_value(64 ), "M");
+    desc.add_options()("K,k", po::value<int>()->default_value(256), "K");
+    desc.add_options()("I,i", po::value<int>()->default_value(1), "Iterations");
 
     arg_utils::parse_options(argc, argv, desc, vm);
     
     // User logic
     int M = vm["M"].as<int>();
     int K = vm["K"].as<int>();
-    int Iterations = vm["I"].as<int>();
+    int Iterations =1; // vm["I"].as<int>();
     int N = 1;
     int Y_VOLUME = M * 1;
     int W_VOLUME = M * K;
@@ -116,7 +116,10 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_in> x_0 = app_0.create_bo_buffer<dtype_in>(X_VOLUME, 4);
     buffer<dtype_out> y_0 = app_0.create_bo_buffer<dtype_out>(Y_VOLUME, 5);
 
+    int tmp_trace_size  = (trace_size > 0)? trace_size: 1;
+    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size, 6, app_id_0);
 
+    
 
     // random float, not in in this case
     std::random_device rd;
@@ -144,6 +147,8 @@ int main(int argc, const char *argv[]) {
     buffer<dtype_out> y_ref_1(Y_VOLUME);    
     linear(y_ref_0, w_0, x_0);
 
+    char *bufTrace = trace_res.data();
+
     w_0.sync_to_device();
 
     x_0.sync_to_device();
@@ -167,6 +172,12 @@ int main(int argc, const char *argv[]) {
     MSG_BONDLINE(40);
 
     y_0.sync_from_device();    
+    if(trace_size > 0){
+        trace_res.sync_from_device();
+        npu_instance.write_out_trace(((char *)bufTrace), trace_size,
+        "trace.txt");
+    }
+
     header_print("info", "Finished running kernel");
 
     if (pass){

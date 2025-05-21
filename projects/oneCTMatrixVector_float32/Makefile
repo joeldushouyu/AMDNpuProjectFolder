@@ -6,6 +6,7 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 # Modified by Alfred
 
+MlirDIR ?= $(or $(Mlir_DIR),/home/shouyud/PROJECT/mlir-aie)
 
 TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/PROJECT/AMDNpuProjectFolder/Template)
 TemplaeHostDir := $(TemplateRepoDir)/host
@@ -117,3 +118,8 @@ run: ${HOST_C_TARGET} ${XCLBIN_TARGETS} ${INSTS_TARGETS}
 route: ${IRON_BOTH_MLIR_TARGET}
 	aie-opt --aie-create-pathfinder-flows --aie-find-flows ${<} | aie-translate --aie-flows-to-json > route.json
 	python ${TemplateRepoDir}/visualize.py -j route.json
+
+
+trace: trace.txt
+	${MlirDIR}/programming_examples/utils/parse_trace.py --filename trace.txt --mlir build/mlir/mv.mlir --colshift 0 > mv_float.json
+	${MlirDIR}/programming_examples/utils/get_trace_summary.py --filename mv_float.json

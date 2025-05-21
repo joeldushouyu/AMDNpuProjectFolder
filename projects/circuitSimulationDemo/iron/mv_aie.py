@@ -143,7 +143,10 @@ def single_mat_vect_mult():
         in_data_ty = np.ndarray[ (buffer_size_of_in_ping_pong*2, ), dtype_in]
         out_data_ty = np.ndarray[ (buffer_size_of_out_ping_pong*2, ), dtype_out]
 
-        
+        C1_DSW_mat_res_ty = np.ndarray[ (buffer_size_of_C1_DSW_mat_res,), dtype_in ]
+        A_B_mat_res_ty = np.ndarray[ (buffer_size_of_A_B_mat_res,), dtype_in]
+        X_U_Cur_ty = np.ndarray[ (buffer_size_of_x_u_cur,), dtype_in]
+        C_D_mat_res_ty =np.ndarray[ (buffer_size_of_intermediate_C_D_mat_res,), dtype_in] 
         #NOTE: mem_bank flag seem not working anymore after Tile() is configure to basic-sequential address mode
         offset = 1024
         in_buffer = [
@@ -286,7 +289,9 @@ def single_mat_vect_mult():
         CT_0_2_main_func = external_func("CT_main", inputs=[
             in_data_ty, out_data_ty,
             np.int32, np.int32, np.int32, np.int32,
-            switch_diode_matrix_ty
+            switch_diode_matrix_ty, 
+            
+            C1_DSW_mat_res_ty, A_B_mat_res_ty, X_U_Cur_ty, C_D_mat_res_ty
         ])
 
         @core(ComputeTile_0_2, "mainKernel.o")
@@ -295,7 +300,9 @@ def single_mat_vect_mult():
             CT_0_2_main_func(
                 in_buffer[0], out_buffer[0],
                 constant(8),constant(9),constant(10),constant(11),
-                switch_diode_buffer[0]
+                switch_diode_buffer[0],
+                
+                C1_DSW_mat_res_buffer[0], A_B_mat_res_buffer[0], X_U_cur_buffer[0], C_D_mat_res_buffer[0]
                 
             )
 

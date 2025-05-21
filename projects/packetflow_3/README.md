@@ -39,3 +39,5 @@ In the commented out buffer allocation code in CT_0_2, it demonstrate that altho
 there is 64kB on each CT, by 1KB is reserved for stack. If not, it will overflow.
 
 
+### SIDE NOTE:
+The width of memory bank become 256 bit for each bank now

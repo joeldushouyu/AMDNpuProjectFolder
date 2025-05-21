@@ -140,7 +140,6 @@ int main(int argc, const char *argv[]) {
     //         out_ref_0[out_offset] = acc;
     //         out_offset++;
     //     }
-
     // }
 
     // generate out_ref_0

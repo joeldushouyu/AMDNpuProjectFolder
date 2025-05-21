@@ -122,7 +122,7 @@ int main(int argc, const char *argv[]) {
 
 
     int tmp_trace_size  = (trace_size > 0)? trace_size: 1;
-    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size, 7, app_id_0);
+    buffer<char> trace_res = npu_instance.create_bo_buffer<char>(tmp_trace_size, 6, app_id_0);
 
     
 

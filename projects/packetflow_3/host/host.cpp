@@ -41,7 +41,7 @@ int main(int argc, const char *argv[]) {
 //
 //    }
 
-    instr_v = test_utils::load_instr_sequence("./build/insts/aie.txt");
+    instr_v = test_utils::load_instr_binary("./build/insts/aie.txt");
     int IN_SIZE;
     int OUT_SIZE;
 

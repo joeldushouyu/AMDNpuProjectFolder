@@ -7,7 +7,7 @@
 # Modified by Alfred
 
 
-TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/sdu/AMDNpuProjectFolder/Template)
+TemplateRepoDir ?= $(or $(TEMPLATE_REPO_DIR),/home/shouyud/PROJECT/AMDNpuProjectFolder/Template)
 TemplaeHostDir := $(TemplateRepoDir)/host
 
 # create a dynamic link of /common folder, 

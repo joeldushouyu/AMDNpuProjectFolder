@@ -20,7 +20,8 @@
 #include "circuitSimulation.h"
 
 
-float* retrieveMatrixOFfsetBaseOnState(const uint32_t state, const int32_t matrix_size, float* matrix_ptr) {
+  
+float* retrieveMatrixOffsetBaseOnState(const uint32_t state, const int32_t matrix_size, float* matrix_ptr) {
 
     return  matrix_ptr + (state * matrix_size);
 }
@@ -99,7 +100,9 @@ extern "C" {
         const int32_t buffer_in_prod_lock_id, const int32_t buffer_in_con_loc_id,
         const int32_t buffer_out_prod_lock_id, const int32_t buffer_out_con_lock_id,
 
-        float* C1_DSW_Buffer
+        float* C1_DSW_Buffer,
+
+        float* C1_DSW_mat_res, float* A_B_mat_Res, float* X_U_cur, float* C_D_mat_res
     ) {
 
         const int32_t C1_DSW_mat_size = C1_DSW_MATRIX_SIZE;
@@ -129,6 +132,14 @@ extern "C" {
 
 
 
+        static_assert(BUFFER_SIZE_OF_C1_DSW_MAT_RES == 4*3*DIODE_SIZE);
+        static_assert(BUFFER_SIZE_OF_X_U_CUR == 4*(U_SIZE + STATE_SIZE));
+        
+        for(uint32_t i = 0; i < U_SIZE+STATE_SIZE; i++){
+            X_U_cur[i] = 10.0;
+        }
+        const uint32_t C1_DSW_COL_DIV_16_CEIL = round_up_to_pow2_at_compile<16, C1_DSW_COL_SIZE>();
+        const uint32_t C1_DSW_ROW_DIV_16_CEIL = round_up_to_pow2_at_compile<16, C1_DSW_ROW_SIZE>();
         for (uint64_t l = 0; l < MAX_LOOP_SIZE; l++) {
             acquire_greater_equal(buffer_in_con_loc_id + 48, 1);
             acquire_greater_equal(buffer_out_prod_lock_id + 48, 1);
@@ -180,7 +191,7 @@ extern "C" {
 
 
 
-
+            event1();
         }
     }
 } // extern "C"
